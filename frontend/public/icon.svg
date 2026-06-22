@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2B5748" />
+      <stop offset="100%" stop-color="#12251E" />
+    </linearGradient>
+    <linearGradient id="fishGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9CB080" />
+      <stop offset="100%" stop-color="#6E8254" />
+    </linearGradient>
+  </defs>
+  <!-- Background Circle -->
+  <circle cx="256" cy="256" r="240" fill="url(#grad)" stroke="#9CB080" stroke-width="8" />
+  <!-- stylized waves/water -->
+  <path d="M 120 280 C 180 250, 220 310, 280 280 C 340 250, 380 310, 400 280" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="12" stroke-linecap="round" />
+  <path d="M 100 330 C 160 300, 200 360, 260 330 C 320 300, 360 360, 412 330" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="8" stroke-linecap="round" />
+  <!-- stylized fish -->
+  <path d="M 160 220 C 220 160, 300 180, 340 220 C 310 240, 260 250, 200 240 L 160 260 Z" fill="url(#fishGrad)" />
+  <path d="M 160 220 C 150 200, 130 190, 120 200 L 140 230 Z" fill="url(#fishGrad)" opacity="0.8" />
+  <circle cx="310" cy="205" r="4" fill="white" />
+</svg>

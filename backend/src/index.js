@@ -17,6 +17,7 @@ const sensorRoutes = require('./routes/sensors');
 const controlRoutes = require('./routes/controls');
 const settingsRoutes = require('./routes/settings');
 const accountRoutes = require('./routes/account');
+const notificationRoutes = require('./routes/notifications');
 
 // ─── App Setup ─────────────────────────────────────────────────────────────
 const app = express();
@@ -37,10 +38,22 @@ const io = new SocketIO(server, {
 app.set('io', io);
 initSocket(io);
 
+// ─── CORS ─────────────────────────────────────────────────────────────────
+// Must use explicit origin + credentials:true so the browser sends the
+// httpOnly JWT cookie on cross-origin fetch calls (localhost:3000 → :5000).
+// `Access-Control-Allow-Origin: *` cannot be used with credentials.
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (e.g. ESP32, curl, same-origin)
+    // and any origin (localhost, LAN IPs, etc.)
+    callback(null, true);
+  },
+  credentials: true,
+};
+
 // ─── Global Middleware ─────────────────────────────────────────────────────
-// Allow all origins — no CORS restrictions
-app.use(cors());
-app.options('*', cors()); // Handle preflight for all routes
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Handle preflight for all routes
 
 app.use(express.json());
 app.use(cookieParser());
@@ -52,6 +65,7 @@ app.use('/api/sensors', sensorRoutes);
 app.use('/api/controls', controlRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/account', accountRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // ─── Health Check ──────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
@@ -75,3 +89,36 @@ connectDB().then(() => {
     console.log(`[FPMS Backend] CORS: open to all origins`);
   });
 });
+
+// Graceful shutdown handlers
+const shutdown = (signal) => {
+  console.log(`\n[FPMS Backend] ${signal} received. Shutting down gracefully...`);
+  
+  // Forcefully disconnect all Socket.IO clients so server.close() can finish immediately
+  if (app.get('io')) {
+    app.get('io').disconnectSockets(true);
+  }
+
+  server.close(() => {
+    console.log('[FPMS Backend] HTTP server closed.');
+    if (signal === 'SIGUSR2') {
+      process.kill(process.pid, 'SIGUSR2');
+    } else {
+      process.exit(0);
+    }
+  });
+
+  // Force exit after 1.5 seconds if server close hangs
+  setTimeout(() => {
+    console.error('[FPMS Backend] Forcefully shutting down (timeout).');
+    if (signal === 'SIGUSR2') {
+      process.kill(process.pid, 'SIGUSR2');
+    } else {
+      process.exit(1);
+    }
+  }, 1500).unref();
+};
+
+process.once('SIGUSR2', () => shutdown('SIGUSR2')); // nodemon restart signal
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

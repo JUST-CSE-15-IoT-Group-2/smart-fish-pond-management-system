@@ -38,6 +38,51 @@ passport.use(
 
 // ─── Routes ────────────────────────────────────────────────────────────────
 
+// GET /api/auth/dev-login — bypass Google OAuth for LAN testing
+router.get('/dev-login', async (req, res) => {
+  try {
+    const user = await User.findOneAndUpdate(
+      { email: 'dev@smartpond.local' },
+      {
+        googleId: 'dev-mock-id',
+        name: 'Developer User',
+        email: 'dev@smartpond.local',
+        picture: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dev',
+        role: 'admin'
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    const token = jwt.sign(
+      { userId: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: false, // Must be false for local IP testing over HTTP
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    // Redirect to dashboard on the same hostname the user came from
+    // so the cookie domain matches (e.g. localhost or 192.168.x.x)
+    const referer = req.headers.referer || req.headers.origin || '';
+    let frontendBase = process.env.FRONTEND_URL;
+    try {
+      if (referer) {
+        const refUrl = new URL(referer);
+        frontendBase = `${refUrl.protocol}//${refUrl.hostname}:3000`;
+      }
+    } catch (_) { /* use default */ }
+
+    res.redirect(`${frontendBase}/dashboard`);
+  } catch (err) {
+    res.status(500).json({ error: 'Dev login failed' });
+  }
+});
+
 // GET /api/auth/google — kick off OAuth flow
 router.get(
   '/google',

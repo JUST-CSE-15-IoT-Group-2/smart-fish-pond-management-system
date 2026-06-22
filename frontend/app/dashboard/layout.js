@@ -8,20 +8,39 @@ import { authApi } from "../../lib/api";
 
 export default function DashboardLayout({ children }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
+  // status: 'loading' | 'ok' | 'fail'  — single state keeps hook count stable for HMR
+  const [auth, setAuth] = useState({ status: 'loading', user: null });
   const pathname = usePathname();
   const router = useRouter();
 
-  // Fetch current user on mount
+  // Fetch current user on mount.
+  // After a Google OAuth redirect the cookie can take a moment to propagate,
+  // so we retry up to 3 times with increasing delays before giving up.
   useEffect(() => {
-    authApi
-      .me()
-      .then((user) => setCurrentUser(user))
-      .catch(() => {
-        // Not authenticated — redirect to home
-        router.push("/");
-      });
+    let cancelled = false;
+
+    const tryAuth = async (attempt = 0) => {
+      try {
+        const user = await authApi.me();
+        if (!cancelled) setAuth({ status: 'ok', user });
+      } catch {
+        if (cancelled) return;
+        if (attempt < 3) {
+          // Back off: 800ms, 1600ms, 2400ms
+          setTimeout(() => tryAuth(attempt + 1), 800 * (attempt + 1));
+        } else {
+          // Confirmed not authenticated after 3 attempts — go home
+          if (!cancelled) setAuth({ status: 'fail', user: null });
+          router.push("/");
+        }
+      }
+    };
+
+    tryAuth();
+    return () => { cancelled = true; };
   }, [router]);
+
+  const currentUser = auth.user;
 
   const handleLogout = async () => {
     try {
@@ -55,8 +74,25 @@ export default function DashboardLayout({ children }) {
       .slice(0, 2);
   };
 
+  // Always render the full layout with children so Next.js App Router's
+  // internal useMemo count stays stable. Show loading as a full-screen
+  // overlay instead of an early return that omits children entirely.
+  const isLoading = auth.status === "loading";
+
   return (
     <div className="min-h-screen bg-white text-black flex font-sans">
+
+      {/* Full-screen auth loading overlay — sits on top, children still mount */}
+      {isLoading && (
+        <div className="fixed inset-0 bg-brand-slate z-[100] flex flex-col items-center justify-center gap-4">
+          <div className="bg-brand-forest p-4 rounded-2xl">
+            <Waves className="w-8 h-8 text-white animate-pulse" />
+          </div>
+          <p className="text-brand-moss text-sm font-semibold tracking-widest uppercase animate-pulse">
+            Verifying session…
+          </p>
+        </div>
+      )}
 
       {/* Mobile Menu Backdrop */}
       {mobileMenuOpen && (
