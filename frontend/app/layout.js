@@ -1,5 +1,6 @@
 import { Poppins } from "next/font/google";
 import "./globals.css";
+import PWARegistration from "../components/PWARegistration";
 
 const poppins = Poppins({
   variable: "--font-poppins",
@@ -10,6 +11,12 @@ const poppins = Poppins({
 export const metadata = {
   title: "Fish Pond Management System",
   description: "Control and monitor your fish pond management system over the network.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Smart Pond",
+  },
 };
 
 export default function RootLayout({ children }) {
@@ -18,7 +25,10 @@ export default function RootLayout({ children }) {
       lang="en"
       className={`${poppins.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <PWARegistration />
+        {children}
+      </body>
     </html>
   );
 }

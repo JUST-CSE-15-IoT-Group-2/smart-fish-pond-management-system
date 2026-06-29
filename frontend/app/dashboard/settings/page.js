@@ -1,13 +1,26 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Save, ShieldAlert, Wifi } from "lucide-react";
-import { settingsApi } from "../../../lib/api";
+import { Save, ShieldAlert, Wifi, BellRing } from "lucide-react";
+import { settingsApi, notificationsApi } from "../../../lib/api";
+
+// Helper for VAPID key
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 export default function SettingsPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [notiStatus, setNotiStatus] = useState("default");
 
   // Form state
   const [tempMin, setTempMin] = useState(20);
@@ -19,6 +32,10 @@ export default function SettingsPage() {
 
   // Load settings on mount
   useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setNotiStatus(Notification.permission);
+    }
+    
     settingsApi
       .get()
       .then((data) => {
@@ -32,6 +49,33 @@ export default function SettingsPage() {
       .catch((err) => console.error("Failed to load settings:", err))
       .finally(() => setLoading(false));
   }, []);
+
+  const handleEnableNotifications = async () => {
+    if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+      alert("Push notifications are not supported in this browser.");
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      setNotiStatus(permission);
+      
+      if (permission === "granted") {
+        const registration = await navigator.serviceWorker.ready;
+        const { publicKey } = await notificationsApi.getVapidKey();
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+        await notificationsApi.subscribe(subscription);
+        alert("Push notifications enabled successfully!");
+      } else {
+        alert("Notification permission denied.");
+      }
+    } catch (err) {
+      console.error("Failed to enable notifications:", err);
+      alert("Error enabling notifications. Check console.");
+    }
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -91,44 +135,7 @@ export default function SettingsPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-        {/* Section 1: Network Gateway */}
-        <div className="p-6 rounded-2xl border border-gray-100 bg-white space-y-4 shadow-sm">
-          <div className="flex items-center gap-2.5 text-brand-forest">
-            <Wifi className="w-5 h-5" />
-            <h3 className="font-bold text-black text-base">IoT Gateway Network</h3>
-          </div>
-          <p className="text-xs text-black/60 leading-relaxed">
-            Set local network variables to allow connection sync with local node microcontrollers.
-          </p>
-
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-bold text-black uppercase tracking-wider mb-1">
-                Gateway IPv4 Address
-              </label>
-              <input
-                type="text"
-                value={gatewayIp}
-                onChange={(e) => setGatewayIp(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-brand-slate/20 focus:border-brand-forest focus:outline-none text-sm text-black"
-                placeholder="192.168.1.1"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-black uppercase tracking-wider mb-1">
-                MQTT Broker Port
-              </label>
-              <input
-                type="number"
-                value={mqttPort}
-                onChange={(e) => setMqttPort(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-brand-slate/20 focus:border-brand-forest focus:outline-none text-sm text-black"
-                placeholder="1883"
-              />
-            </div>
-          </div>
-        </div>
-
+        
         {/* Section 2: Sensor Thresholds */}
         <div className="p-6 rounded-2xl border border-gray-100 bg-white space-y-4 shadow-sm">
           <div className="flex items-center gap-2.5 text-brand-forest">
@@ -191,6 +198,34 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Section 3: Push Notifications */}
+        <div className="p-6 rounded-2xl border border-gray-100 bg-white space-y-4 shadow-sm md:col-span-2">
+          <div className="flex items-center gap-2.5 text-brand-forest">
+            <BellRing className="w-5 h-5" />
+            <h3 className="font-bold text-black text-base">Push Notifications</h3>
+          </div>
+          <p className="text-xs text-black/60 leading-relaxed">
+            Enable push notifications to receive critical alerts directly on your device, even when the app is closed.
+          </p>
+          
+          <div className="flex items-center justify-between p-4 border border-brand-slate/20 rounded-xl bg-gray-50/50">
+            <div>
+              <p className="text-sm font-bold text-black">Device Notifications</p>
+              <p className="text-xs text-black/60 mt-1">
+                Status: <span className="font-semibold uppercase text-brand-forest">{notiStatus}</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleEnableNotifications}
+              disabled={notiStatus === "granted"}
+              className="px-4 py-2 bg-brand-forest text-white text-xs font-bold uppercase tracking-wider rounded-lg hover:bg-brand-sage transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+            >
+              {notiStatus === "granted" ? "Enabled" : "Enable"}
+            </button>
           </div>
         </div>
 

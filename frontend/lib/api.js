@@ -6,7 +6,9 @@
  *   publicFetch  — no credentials (for public routes; required when CORS origin is *)
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = typeof window !== 'undefined'
+  ? `http://${window.location.hostname}:5000`
+  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000');
 
 // For auth-protected endpoints (cookie-based JWT)
 async function apiFetch(path, options = {}) {
@@ -48,7 +50,17 @@ async function publicFetch(path, options = {}) {
 export const authApi = {
   me: () => apiFetch('/api/auth/me'),
   logout: () => apiFetch('/api/auth/logout', { method: 'POST' }),
-  googleLoginUrl: `${API_URL}/api/auth/google`,
+  // googleLoginUrl must be computed at runtime so it uses the correct hostname
+  get googleLoginUrl() {
+    return typeof window !== 'undefined'
+      ? `http://${window.location.hostname}:5000/api/auth/google`
+      : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/auth/google`;
+  },
+  get devLoginUrl() {
+    return typeof window !== 'undefined'
+      ? `http://${window.location.hostname}:5000/api/auth/dev-login`
+      : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/auth/dev-login`;
+  },
 };
 
 // Sensor endpoints are public — use publicFetch
@@ -59,13 +71,29 @@ export const sensorsApi = {
 };
 
 export const controlsApi = {
-  getFeeding: () => apiFetch('/api/controls/feeding'),
+  // Feeding — no auth required (backend uses optionalAuth)
+  getFeeding: () => publicFetch('/api/controls/feeding'),
   setFeeding: (times) =>
-    apiFetch('/api/controls/feeding', {
+    publicFetch('/api/controls/feeding', {
       method: 'PUT',
       body: JSON.stringify({ times }),
     }),
-  // Motor is a public global device — no auth needed
+  setFeedingDuration: (durationMinutes) =>
+    publicFetch('/api/controls/feeding/duration', {
+      method: 'PUT',
+      body: JSON.stringify({ durationMinutes }),
+    }),
+  setManualMode: (manualMode) =>
+    publicFetch('/api/controls/feeding/manual', {
+      method: 'PUT',
+      body: JSON.stringify({ manualMode }),
+    }),
+  setManualActive: (manualActive) =>
+    publicFetch('/api/controls/feeding/manual/active', {
+      method: 'PUT',
+      body: JSON.stringify({ manualActive }),
+    }),
+  // Motor — always public
   getMotor: () => publicFetch('/api/controls/motor'),
   setMotor: (update) =>
     publicFetch('/api/controls/motor', {
@@ -87,6 +115,15 @@ export const accountApi = {
   get: () => apiFetch('/api/account'),
   regenerateKey: () =>
     apiFetch('/api/account/regenerate-key', { method: 'POST' }),
+};
+
+export const notificationsApi = {
+  getVapidKey: () => publicFetch('/api/notifications/vapid-public-key'),
+  subscribe: (subscription) =>
+    apiFetch('/api/notifications/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ subscription }),
+    }),
 };
 
 export default apiFetch;
