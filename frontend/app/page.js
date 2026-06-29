@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import GoogleIcon from "../components/GoogleIcon";
+import { Waves } from "lucide-react";
 
 export default function Home() {
   // Dynamic API URL — works from localhost OR LAN IP (192.168.x.x)
@@ -17,40 +18,19 @@ export default function Home() {
         <div className="flex items-center gap-2.5">
           {/* Logo Icon */}
           <div className="bg-brand-forest p-2 rounded-full flex items-center justify-center">
-            <svg
-              className="w-4 h-4 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"
-              />
-            </svg>
+            <Waves className="w-4 h-4 text-white" />
           </div>
           <span className="font-bold tracking-tight text-sm sm:text-base">FPMS</span>
         </div>
 
         {/* Desktop Navigation Links */}
         <div className="hidden md:flex items-center gap-8 text-xs font-semibold uppercase tracking-wider text-white">
-          <a href="#monitor" className="hover:text-brand-moss transition-colors">Monitor</a>
-          <a href="#controls" className="hover:text-brand-moss transition-colors">Controls</a>
-          <a href="#network" className="hover:text-brand-moss transition-colors">Network</a>
+          <a href="/dashboard/updates" className="hover:text-brand-moss transition-colors">Updates</a>
+          <a href="/dashboard/controls" className="hover:text-brand-moss transition-colors">Controls</a>
+          <a href="/dashboard/settings" className="hover:text-brand-moss transition-colors">Network</a>
         </div>
 
-        {/* Dev Sign-in in Nav */}
-        <div>
-          <a
-            href={`${apiUrl}/api/auth/dev-login`}
-            className="bg-brand-moss hover:bg-white border border-brand-moss text-white hover:text-black text-xs font-semibold px-4 py-2 rounded-full shadow-md transition-all duration-300 flex items-center gap-2 group cursor-pointer"
-          >
-            <span>LAN Login</span>
-          </a>
-        </div>
+        {/* (Removed LAN Login link) */}
       </nav>
 
       {/* Grid Pattern Background Accent */}
@@ -92,13 +72,7 @@ export default function Home() {
             <span>Google Login</span>
           </a>
 
-          {/* Dev Login Button */}
-          <a
-            href={`${apiUrl}/api/auth/dev-login`}
-            className="w-full sm:w-auto px-6 py-3.5 bg-brand-slate hover:bg-brand-moss text-white text-sm font-semibold rounded-xl transition-all duration-300 flex items-center justify-center gap-3 shadow-md hover:shadow-lg hover:scale-[1.02] cursor-pointer"
-          >
-            <span>📱 LAN Testing Login</span>
-          </a>
+          {/* (Removed LAN Testing Login button) */}
         </div>
       </main>
 
