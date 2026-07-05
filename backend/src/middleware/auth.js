@@ -1,38 +1,45 @@
-const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 /**
- * Verify JWT from httpOnly cookie or Authorization: Bearer header.
- * Attaches req.user = full Mongoose user document.
+ * Helper to retrieve or create the default System Operator user.
+ */
+const getOrCreateDefaultUser = async () => {
+  let user = await User.findOne({ email: 'operator@smartpond.local' });
+  if (!user) {
+    user = await User.create({
+      googleId: 'system-operator-id',
+      name: 'System Operator',
+      email: 'operator@smartpond.local',
+      picture: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Operator',
+      role: 'admin',
+      apiKey: 'fpms_live_sk_operator_key_default_12345'
+    });
+  }
+  return user;
+};
+
+/**
+ * Automatically attaches req.user = default System Operator user.
  */
 const requireAuth = async (req, res, next) => {
-  let token;
-
-  // 1. Check httpOnly cookie (set after OAuth)
-  if (req.cookies && req.cookies.token) {
-    token = req.cookies.token;
-  }
-
-  // 2. Fallback: Authorization: Bearer <token>
-  if (!token && req.headers.authorization?.startsWith('Bearer ')) {
-    token = req.headers.authorization.split(' ')[1];
-  }
-
-  if (!token) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.userId).select('-__v');
-    if (!user) {
-      return res.status(401).json({ error: 'User not found' });
-    }
-    req.user = user;
+    req.user = await getOrCreateDefaultUser();
     next();
   } catch (err) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+    next(err);
   }
 };
 
-module.exports = { requireAuth };
+/**
+ * Optional auth: Also automatically attaches req.user = default System Operator user.
+ */
+const optionalAuth = async (req, res, next) => {
+  try {
+    req.user = await getOrCreateDefaultUser();
+  } catch (_) {
+    // Ignore error, call next
+  }
+  next();
+};
+
+module.exports = { requireAuth, optionalAuth };

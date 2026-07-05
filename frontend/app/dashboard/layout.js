@@ -42,15 +42,6 @@ export default function DashboardLayout({ children }) {
 
   const currentUser = auth.user;
 
-  const handleLogout = async () => {
-    try {
-      await authApi.logout();
-    } catch (_) {
-      // ignore
-    }
-    router.push("/");
-  };
-
   const navigation = [
     { name: "Updates", href: "/dashboard/updates", icon: Bell },
     { name: "Controls", href: "/dashboard/controls", icon: Sliders },
@@ -181,13 +172,13 @@ export default function DashboardLayout({ children }) {
             </div>
           </div>
 
-          <button
-            onClick={handleLogout}
+          <Link
+            href="/"
             className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-brand-forest hover:bg-brand-sage text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all duration-300 shadow-md hover:shadow-lg cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
-            <span>Sign Out</span>
-          </button>
+            <span>Back to Home</span>
+          </Link>
         </div>
       </aside>
 

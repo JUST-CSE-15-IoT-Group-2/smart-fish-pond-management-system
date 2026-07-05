@@ -1,24 +1,10 @@
 const express = require('express');
 const SystemSettings = require('../models/SystemSettings');
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
-
 const router = express.Router();
 
-// Optional auth — try to extract user but don't block if absent
-const optionalAuth = async (req, res, next) => {
-  let token = req.cookies?.token;
-  if (!token && req.headers.authorization?.startsWith('Bearer ')) {
-    token = req.headers.authorization.split(' ')[1];
-  }
-  if (token) {
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = await User.findById(decoded.userId).select('-__v');
-    } catch (_) { /* ignore invalid token */ }
-  }
-  next();
-};
+const ANONYMOUS_USER_ID = '000000000000000000000000';
+
+const { optionalAuth } = require('../middleware/auth');
 
 router.use(optionalAuth);
 
@@ -32,15 +18,15 @@ router.get('/', async (req, res) => {
     settings = await SystemSettings.findOne().sort({ updatedAt: -1 });
   }
   if (!settings) {
-    return res.json({ tempMin: 20, tempMax: 28, phMin: 6.5, phMax: 8.5, smsAlerts: false, emailAlerts: false });
+    return res.json({ tempMin: 20, tempMax: 28, phMin: 6.5, phMax: 8.5, oxygenMin: 5.0, rainMax: 60.0, smsAlerts: false, emailAlerts: false });
   }
-  const { gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, smsAlerts, emailAlerts } = settings;
-  res.json({ gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, smsAlerts, emailAlerts });
+  const { gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, oxygenMin, rainMax, smsAlerts, emailAlerts } = settings;
+  res.json({ gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, oxygenMin, rainMax, smsAlerts, emailAlerts });
 });
 
 // PUT /api/settings — save system settings
 router.put('/', async (req, res) => {
-  const allowed = ['gatewayIp', 'mqttPort', 'tempMin', 'tempMax', 'phMin', 'phMax', 'smsAlerts', 'emailAlerts'];
+  const allowed = ['gatewayIp', 'mqttPort', 'tempMin', 'tempMax', 'phMin', 'phMax', 'oxygenMin', 'rainMax', 'smsAlerts', 'emailAlerts'];
   const update = {};
 
   allowed.forEach((key) => {
@@ -52,7 +38,7 @@ router.put('/', async (req, res) => {
     query = { userId: req.user._id };
   } else {
     const existing = await SystemSettings.findOne().sort({ updatedAt: -1 });
-    query = existing ? { _id: existing._id } : { userId: 'anonymous' };
+    query = existing ? { _id: existing._id } : { userId: ANONYMOUS_USER_ID };
   }
 
   const settings = await SystemSettings.findOneAndUpdate(
@@ -61,8 +47,8 @@ router.put('/', async (req, res) => {
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
 
-  const { gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, smsAlerts, emailAlerts } = settings;
-  res.json({ gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, smsAlerts, emailAlerts });
+  const { gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, oxygenMin, rainMax, smsAlerts, emailAlerts } = settings;
+  res.json({ gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, oxygenMin, rainMax, smsAlerts, emailAlerts });
 });
 
 module.exports = router;

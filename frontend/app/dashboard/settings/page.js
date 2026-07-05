@@ -27,6 +27,8 @@ export default function SettingsPage() {
   const [tempMax, setTempMax] = useState(28);
   const [phMin, setPhMin] = useState(6.5);
   const [phMax, setPhMax] = useState(8.5);
+  const [oxygenMin, setOxygenMin] = useState(5.0);
+  const [rainMax, setRainMax] = useState(60);
   const [gatewayIp, setGatewayIp] = useState("192.168.1.45");
   const [mqttPort, setMqttPort] = useState(1883);
 
@@ -43,6 +45,8 @@ export default function SettingsPage() {
         setTempMax(data.tempMax);
         setPhMin(data.phMin);
         setPhMax(data.phMax);
+        setOxygenMin(data.oxygenMin ?? 5.0);
+        setRainMax(data.rainMax ?? 60.0);
         setGatewayIp(data.gatewayIp);
         setMqttPort(data.mqttPort);
       })
@@ -86,6 +90,8 @@ export default function SettingsPage() {
         tempMax,
         phMin,
         phMax,
+        oxygenMin: Number(oxygenMin),
+        rainMax: Number(rainMax),
         gatewayIp,
         mqttPort: Number(mqttPort),
       });
@@ -194,6 +200,33 @@ export default function SettingsPage() {
                   step="0.1"
                   value={phMax}
                   onChange={(e) => setPhMax(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-brand-slate/20 focus:border-brand-forest focus:outline-none text-sm text-black rounded-lg"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-black uppercase tracking-wider mb-1">
+                  Min Oxygen (mg/L)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={oxygenMin}
+                  onChange={(e) => setOxygenMin(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-brand-slate/20 focus:border-brand-forest focus:outline-none text-sm text-black rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-black uppercase tracking-wider mb-1">
+                  Max Rain/Wetness (%)
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  value={rainMax}
+                  onChange={(e) => setRainMax(Number(e.target.value))}
                   className="w-full px-3 py-2 border border-brand-slate/20 focus:border-brand-forest focus:outline-none text-sm text-black rounded-lg"
                 />
               </div>

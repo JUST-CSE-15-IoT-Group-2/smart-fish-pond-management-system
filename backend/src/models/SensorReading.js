@@ -4,7 +4,7 @@ const sensorReadingSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ['temperature', 'turbidity', 'ph', 'rain'],
+      enum: ['temperature', 'turbidity', 'ph', 'rain', 'oxygen'],
       required: true,
       index: true,
     },

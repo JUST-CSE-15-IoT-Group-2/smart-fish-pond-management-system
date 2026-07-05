@@ -20,7 +20,7 @@ const cooldowns = new Map();
 const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes cooldown per sensor type per user
 
 // All valid sensor types
-const VALID_TYPES = ['temperature', 'turbidity', 'ph', 'rain'];
+const VALID_TYPES = ['temperature', 'turbidity', 'ph', 'rain', 'oxygen'];
 
 // ─── POST /api/sensors/reading ─────────────────────────────────────────────
 // Used by IoT devices (ESP32, Raspberry Pi, etc.) to push new readings.
@@ -104,11 +104,15 @@ async function checkThresholdsAndNotify(type, value) {
         shouldAlert = true;
         alertMessage = 'Water Turbidity warning! Pond water clarity has degraded below the safe threshold.';
       }
-    } else if (type === 'rain') {
-      // Rain wetness >= 60% indicates moderate/heavy rain
-      if (value >= 60) {
+    } else if (type === 'oxygen') {
+      if (value < settings.oxygenMin) {
         shouldAlert = true;
-        alertMessage = `Wet weather warning: Heavy rain detected (${value.toFixed(0)}% wetness). Check drainage systems.`;
+        alertMessage = `Low oxygen alarm! Dissolved oxygen dropped to ${value.toFixed(1)} mg/L (Limit: ${settings.oxygenMin} mg/L)`;
+      }
+    } else if (type === 'rain') {
+      if (value >= settings.rainMax) {
+        shouldAlert = true;
+        alertMessage = `Wet weather warning: Heavy rain detected (${value.toFixed(0)}% wetness). Limit: ${settings.rainMax}%.`;
       }
     }
 
@@ -174,7 +178,7 @@ router.get('/readings', async (req, res) => {
 // Used for the live "card" values on the Updates page.
 // PUBLIC — no authentication required.
 router.get('/latest', async (req, res) => {
-  const [tempReading, turbidityReading, phReading, rainReading] =
+  const [tempReading, turbidityReading, phReading, rainReading, oxygenReading] =
     await Promise.all([
       SensorReading.findOne({ type: 'temperature' })
         .sort({ recordedAt: -1 })
@@ -188,6 +192,9 @@ router.get('/latest', async (req, res) => {
       SensorReading.findOne({ type: 'rain' })
         .sort({ recordedAt: -1 })
         .select('value unit recordedAt -_id'),
+      SensorReading.findOne({ type: 'oxygen' })
+        .sort({ recordedAt: -1 })
+        .select('value unit recordedAt -_id'),
     ]);
 
   res.json({
@@ -195,6 +202,7 @@ router.get('/latest', async (req, res) => {
     turbidity:   turbidityReading || null,
     ph:          phReading    || null,
     rain:        rainReading  || null,
+    oxygen:      oxygenReading || null,
   });
 });
 

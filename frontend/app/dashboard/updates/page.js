@@ -244,6 +244,7 @@ export default function UpdatesPage() {
   const [tempData,  setTempData]  = useState([]);
   const [phData,    setPhData]    = useState([]);
   const [rainData,  setRainData]  = useState([]);
+  const [turbData,  setTurbData]  = useState([]);
   const [latest, setLatest] = useState({
     temperature: null,
     turbidity:   null,
@@ -255,6 +256,8 @@ export default function UpdatesPage() {
     tempMax: 28,
     phMin: 6.5,
     phMax: 8.5,
+    oxygenMin: 5.0,
+    rainMax: 60,
   });
   const [loading, setLoading] = useState(true);
   const [showNotificationBanner, setShowNotificationBanner] = useState(false);
@@ -305,16 +308,18 @@ export default function UpdatesPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [tempReadings, phReadings, rainReadings, latestData, settingsData] = await Promise.all([
+      const [tempReadings, phReadings, rainReadings, turbReadings, latestData, settingsData] = await Promise.all([
         sensorsApi.readings("temperature", 12),
         sensorsApi.readings("ph", 12),
         sensorsApi.readings("rain", 12),
+        sensorsApi.readings("turbidity", 12),
         sensorsApi.latest(),
         settingsApi.get().catch(() => null),
       ]);
       setTempData(tempReadings);
       setPhData(phReadings);
       setRainData(rainReadings);
+      setTurbData(turbReadings);
       setLatest(latestData);
       if (settingsData) {
         setSettings(settingsData);
@@ -342,6 +347,7 @@ export default function UpdatesPage() {
         if (reading.type === "temperature") setTempData((p) => [...p.slice(-11), reading]);
         if (reading.type === "ph")          setPhData((p)   => [...p.slice(-11), reading]);
         if (reading.type === "rain")        setRainData((p) => [...p.slice(-11), reading]);
+        if (reading.type === "turbidity")   setTurbData((p) => [...p.slice(-11), reading]);
       });
     });
 
@@ -363,6 +369,9 @@ export default function UpdatesPage() {
   const rainValues = rainData.map((d) => d.value);
   const rainMin    = 0;
   const rainMax    = 100;
+
+  const turbMin    = 0;
+  const turbMax    = 100;
 
   return (
     <div className="space-y-6">
@@ -483,6 +492,16 @@ export default function UpdatesPage() {
           }}
         />
 
+        <ChartCard
+          title="Water Turbidity Trend"
+          subtitle="0 NTU = clear, 100 NTU = highly turbid"
+          chartProps={{
+            data: turbData, minVal: turbMin, maxVal: turbMax,
+            gradientId: "turbGradient", strokeColor: "#2a5298", labelUnit: " NTU",
+            yLabels: ["100", "50", "0"],
+          }}
+        />
+
         {/* Reference guide */}
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-5 text-black flex flex-col justify-center">
           <div>
@@ -517,7 +536,7 @@ export default function UpdatesPage() {
         <div className="space-y-0.5">
           <h4 className="text-xs font-bold uppercase tracking-wider">Analysis Notice</h4>
           <p className="text-xs text-black/75 leading-relaxed">
-            Optimal conditions: temperature {settings.tempMin}–{settings.tempMax} °C · pH {settings.phMin}–{settings.phMax} · turbidity CLEAR · no rain.
+            Optimal conditions: temperature {settings.tempMin}–{settings.tempMax} °C · pH {settings.phMin}–{settings.phMax} · oxygen &gt; {settings.oxygenMin} mg/L · rain &lt; {settings.rainMax}% · turbidity CLEAR.
             All sensors stream live via WebSocket — values update automatically.
           </p>
         </div>

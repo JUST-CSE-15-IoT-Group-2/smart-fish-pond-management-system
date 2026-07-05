@@ -1,15 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import GoogleIcon from "../components/GoogleIcon";
 import { Waves } from "lucide-react";
 
 export default function Home() {
-  // Dynamic API URL — works from localhost OR LAN IP (192.168.x.x)
-  const apiUrl = typeof window !== "undefined"
-    ? `http://${window.location.hostname}:5000`
-    : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000");
-
   return (
     <div className="relative min-h-screen bg-white text-black font-sans flex flex-col items-center justify-start overflow-x-hidden selection:bg-brand-moss selection:text-white">
 
@@ -55,24 +49,13 @@ export default function Home() {
 
         {/* Action Buttons */}
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 w-full sm:w-auto">
-          {/* Launch Console — goes directly to dashboard (if already logged in) */}
+          {/* Launch Console — goes directly to dashboard */}
           <a
             href="/dashboard"
-            className="w-full sm:w-auto px-7 py-3.5 bg-brand-forest hover:bg-brand-sage text-white text-sm font-semibold rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] cursor-pointer text-center"
+            className="w-full sm:w-auto px-10 py-4 bg-brand-forest hover:bg-brand-sage text-white text-sm font-bold rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] cursor-pointer text-center uppercase tracking-wider"
           >
             Launch Console
           </a>
-
-          {/* Google Login Button */}
-          <a
-            href={`${apiUrl}/api/auth/google`}
-            className="w-full sm:w-auto px-6 py-3.5 bg-white hover:bg-gray-50 border border-brand-slate/20 text-black text-sm font-semibold rounded-xl transition-all duration-300 flex items-center justify-center gap-3 shadow-md hover:shadow-lg hover:scale-[1.02] group cursor-pointer"
-          >
-            <GoogleIcon className="transition-transform duration-300 group-hover:scale-110" />
-            <span>Google Login</span>
-          </a>
-
-          {/* (Removed LAN Testing Login button) */}
         </div>
       </main>
 

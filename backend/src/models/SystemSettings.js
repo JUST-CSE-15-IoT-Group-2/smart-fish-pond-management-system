@@ -21,6 +21,8 @@ const systemSettingsSchema = new mongoose.Schema(
     tempMax: { type: Number, default: 28 },
     phMin: { type: Number, default: 6.5 },
     phMax: { type: Number, default: 8.5 },
+    oxygenMin: { type: Number, default: 5.0 },
+    rainMax: { type: Number, default: 60.0 },
     // Notification preferences
     smsAlerts: { type: Boolean, default: true },
     emailAlerts: { type: Boolean, default: false },

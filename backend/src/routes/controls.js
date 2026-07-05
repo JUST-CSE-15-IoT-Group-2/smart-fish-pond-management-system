@@ -4,6 +4,8 @@ const MotorState = require('../models/MotorState');
 
 const router = express.Router();
 
+const ANONYMOUS_USER_ID = '000000000000000000000000';
+
 // Shared device ID used as the singleton motor state key
 const DEVICE_ID = 'pond-motor-01';
 
@@ -108,24 +110,7 @@ router.get('/feeding/state', async (req, res) => {
 
 // ─── Feeding Schedule (no auth required for LAN IoT operation) ──────────────
 
-// Helper: get userId from cookie if available, otherwise null
-const { requireAuth } = require('../middleware/auth');
-const optionalAuth = async (req, res, next) => {
-  // Try to extract user from cookie/token, but don't block if absent
-  const jwt = require('jsonwebtoken');
-  const User = require('../models/User');
-  let token = req.cookies?.token;
-  if (!token && req.headers.authorization?.startsWith('Bearer ')) {
-    token = req.headers.authorization.split(' ')[1];
-  }
-  if (token) {
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = await User.findById(decoded.userId).select('-__v');
-    } catch (_) { /* ignore invalid token */ }
-  }
-  next();
-};
+const { optionalAuth } = require('../middleware/auth');
 
 router.use(optionalAuth);
 
@@ -163,7 +148,7 @@ router.put('/feeding', async (req, res) => {
   } else {
     // Find existing schedule or create one with a placeholder userId
     const existing = await FeedingSchedule.findOne().sort({ updatedAt: -1 });
-    query = existing ? { _id: existing._id } : { userId: 'anonymous' };
+    query = existing ? { _id: existing._id } : { userId: ANONYMOUS_USER_ID };
   }
 
   const schedule = await FeedingSchedule.findOneAndUpdate(
@@ -187,7 +172,7 @@ router.put('/feeding/duration', async (req, res) => {
     query = { userId: req.user._id };
   } else {
     const existing = await FeedingSchedule.findOne().sort({ updatedAt: -1 });
-    query = existing ? { _id: existing._id } : { userId: 'anonymous' };
+    query = existing ? { _id: existing._id } : { userId: ANONYMOUS_USER_ID };
   }
 
   const schedule = await FeedingSchedule.findOneAndUpdate(
@@ -214,7 +199,7 @@ router.put('/feeding/manual', async (req, res) => {
     query = { userId: req.user._id };
   } else {
     const existing = await FeedingSchedule.findOne().sort({ updatedAt: -1 });
-    query = existing ? { _id: existing._id } : { userId: 'anonymous' };
+    query = existing ? { _id: existing._id } : { userId: ANONYMOUS_USER_ID };
   }
 
   const schedule = await FeedingSchedule.findOneAndUpdate(
@@ -237,7 +222,7 @@ router.put('/feeding/manual/active', async (req, res) => {
     query = { userId: req.user._id };
   } else {
     const existing = await FeedingSchedule.findOne().sort({ updatedAt: -1 });
-    query = existing ? { _id: existing._id } : { userId: 'anonymous' };
+    query = existing ? { _id: existing._id } : { userId: ANONYMOUS_USER_ID };
   }
 
   const schedule = await FeedingSchedule.findOneAndUpdate(

@@ -26,10 +26,10 @@
 const char* WIFI_SSID     = "RAIHAN";
 const char* WIFI_PASSWORD = "32145678";
 
-const char* BACKEND_IP  = "192.168.68.127";   // ← PC's LAN IP (run `ipconfig` to check)
-const char* SENSOR_URL  = "http://192.168.98.15:5000/api/sensors/reading";
-const char* MOTOR_URL   = "http://192.168.98.15:5000/api/controls/motor";
-const char* FEEDING_URL = "http://192.168.98.15:5000/api/controls/feeding/state";
+const char* BACKEND_IP  = "192.168.104.15";   // ← PC's LAN IP (run `ipconfig` to check)
+const char* SENSOR_URL  = "http://"+BACKEND_IP+":5000/api/sensors/reading";
+const char* MOTOR_URL   = "http://"+BACKEND_IP+":5000/api/controls/motor";
+const char* FEEDING_URL = "http://"+BACKEND_IP+":5000/api/controls/feeding/state";
 const char* DEVICE_ID   = "pond-01";
 
 // ── Pin numbers ───────────────────────────────────────────────

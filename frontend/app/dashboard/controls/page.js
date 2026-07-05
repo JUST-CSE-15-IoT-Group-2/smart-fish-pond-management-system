@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import {
   Trash2, Plus, Power, ShieldAlert, Wifi, WifiOff,
-  RefreshCw, Clock, Gauge, Hand, CalendarClock, Timer,
+  RefreshCw, Clock, Hand, CalendarClock, Timer,
 } from "lucide-react";
 import { controlsApi } from "../../../lib/api";
 
@@ -11,18 +11,11 @@ const API_URL = typeof window !== 'undefined'
   ? `http://${window.location.hostname}:5000`
   : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000');
 
-function getSpeedColor(speed) {
-  if (speed < 30) return "#9CB080";
-  if (speed < 70) return "#f59e0b";
-  return "#60a5fa";
-}
 
 export default function ControlsPage() {
   // ── Oxygen motor ──
   const [connectionActive, setConnectionActive] = useState(true);
   const [motorEnabled, setMotorEnabled]         = useState(false);
-  const [motorSpeed, setMotorSpeed]             = useState(50);
-  const [pendingSpeed, setPendingSpeed]         = useState(50);
 
   // ── Feeding ──
   const [feedingTimes, setFeedingTimes]         = useState([]);
@@ -37,7 +30,6 @@ export default function ControlsPage() {
   const [saving, setSaving]     = useState(false);
 
   const socketRef       = useRef(null);
-  const speedDebounce   = useRef(null);
   const durationDebounce = useRef(null);
 
   // ── Load initial data ────────────────────────────────────────────
@@ -66,8 +58,6 @@ export default function ControlsPage() {
           const motor = motorData.value;
           setMotorEnabled(motor.enabled);
           setConnectionActive(motor.connectionActive);
-          setMotorSpeed(motor.speed ?? 50);
-          setPendingSpeed(motor.speed ?? 50);
         }
       } catch (err) {
         console.error("Failed to load controls:", err);
@@ -83,10 +73,9 @@ export default function ControlsPage() {
       socket = io(API_URL);
       socketRef.current = socket;
 
-      socket.on("motor:update", ({ enabled, connectionActive: conn, speed }) => {
+      socket.on("motor:update", ({ enabled, connectionActive: conn }) => {
         setMotorEnabled(enabled);
         setConnectionActive(conn);
-        if (speed !== undefined) { setMotorSpeed(speed); setPendingSpeed(speed); }
       });
 
       socket.on("feeding:update", ({ times, durationMinutes: dur, manualMode: mm, manualActive: ma }) => {
@@ -161,19 +150,8 @@ export default function ControlsPage() {
   const handleMotorToggle = async () => {
     const next = !motorEnabled;
     setMotorEnabled(next);
-    try { await controlsApi.setMotor({ enabled: next }); }
+    try { await controlsApi.setMotor({ enabled: next, speed: next ? 100 : 0 }); }
     catch (err) { console.error(err); setMotorEnabled(!next); }
-  };
-
-  const handleSpeedChange = (e) => {
-    const val = Number(e.target.value);
-    setPendingSpeed(val);
-    clearTimeout(speedDebounce.current);
-    speedDebounce.current = setTimeout(async () => {
-      setMotorSpeed(val);
-      try { await controlsApi.setMotor({ speed: val }); }
-      catch (err) { console.error(err); }
-    }, 400);
   };
 
   const handleConnectionToggle = async () => {
@@ -183,8 +161,6 @@ export default function ControlsPage() {
     try { await controlsApi.setMotor({ connectionActive: next }); }
     catch (err) { console.error(err); setConnectionActive(!next); }
   };
-
-  const speedColor = getSpeedColor(pendingSpeed);
 
   return (
     <div className="space-y-6">
@@ -365,43 +341,14 @@ export default function ControlsPage() {
                     Enable aeration paddle wheels to dissolve atmospheric oxygen into pond water.
                   </p>
                 </div>
-                <div className={`p-3.5 rounded-2xl bg-brand-forest/40 border border-brand-sage/20 transition-all duration-500 ${motorEnabled && connectionActive ? "animate-spin-slow" : ""}`} style={{ borderColor: motorEnabled ? speedColor + "40" : undefined }}>
+                <div className={`p-3.5 rounded-2xl bg-brand-forest/40 border border-brand-sage/20 transition-all duration-500 ${motorEnabled && connectionActive ? "animate-spin-slow" : ""}`} style={{ borderColor: motorEnabled ? "rgba(156, 176, 128, 0.4)" : undefined }}>
                   <Power className="w-6 h-6 text-white" />
-                </div>
-              </div>
-
-              {/* Speed Slider */}
-              <div className="space-y-3 pt-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-brand-moss uppercase tracking-wider flex items-center gap-1.5">
-                    <Gauge className="w-3.5 h-3.5" /> Aeration Speed
-                  </span>
-                  <span className="text-sm font-extrabold tabular-nums transition-colors duration-300" style={{ color: speedColor }}>
-                    {pendingSpeed}%
-                  </span>
-                </div>
-                <input
-                  type="range" min={0} max={100} step={1}
-                  value={pendingSpeed}
-                  onChange={handleSpeedChange}
-                  disabled={!connectionActive}
-                  className="w-full h-2 rounded-full appearance-none cursor-pointer disabled:cursor-not-allowed"
-                  style={{ background: `linear-gradient(to right, ${speedColor} 0%, ${speedColor} ${pendingSpeed}%, rgba(255,255,255,0.15) ${pendingSpeed}%, rgba(255,255,255,0.15) 100%)` }}
-                />
-                <div className="flex gap-2">
-                  {[25, 50, 75, 100].map((p) => (
-                    <button key={p} type="button" disabled={!connectionActive}
-                      onClick={() => { setPendingSpeed(p); setMotorSpeed(p); controlsApi.setMotor({ speed: p }).catch(console.error); }}
-                      className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer disabled:cursor-not-allowed ${pendingSpeed === p ? "bg-white/20 text-white border border-white/30" : "bg-white/5 text-white/50 border border-white/10 hover:bg-white/10 hover:text-white"}`}
-                    >{p}%</button>
-                  ))}
                 </div>
               </div>
 
               <div className="flex items-center justify-between pt-2 border-t border-brand-forest/10">
                 <span className="text-xs font-semibold text-brand-moss uppercase tracking-wider">
                   Motor: <strong className="text-white">{motorEnabled ? "RUNNING" : "STOPPED"}</strong>
-                  {motorEnabled && <span className="ml-2 text-white/60">@ {motorSpeed}%</span>}
                 </span>
                 <button
                   onClick={handleMotorToggle}
