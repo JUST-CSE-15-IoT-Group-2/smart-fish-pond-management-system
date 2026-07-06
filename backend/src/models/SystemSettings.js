@@ -23,6 +23,17 @@ const systemSettingsSchema = new mongoose.Schema(
     phMax: { type: Number, default: 8.5 },
     oxygenMin: { type: Number, default: 5.0 },
     rainMax: { type: Number, default: 60.0 },
+    latitude: { type: Number, default: 52.52 },
+    longitude: { type: Number, default: 13.41 },
+    // Weather Cache Data
+    weatherTemp: { type: Number },
+    weatherHumidity: { type: Number },
+    weatherWindSpeed: { type: Number },
+    weatherRain: { type: Number },
+    weatherCode: { type: Number },
+    weatherStatus: { type: String },
+    weatherTime: { type: Date },
+    weatherElevation: { type: Number },
     // Notification preferences
     smsAlerts: { type: Boolean, default: true },
     emailAlerts: { type: Boolean, default: false },

@@ -1,5 +1,6 @@
 const express = require('express');
 const SystemSettings = require('../models/SystemSettings');
+const { checkWeatherAndControlMotor } = require('../services/weatherService');
 const router = express.Router();
 
 const ANONYMOUS_USER_ID = '000000000000000000000000';
@@ -18,15 +19,15 @@ router.get('/', async (req, res) => {
     settings = await SystemSettings.findOne().sort({ updatedAt: -1 });
   }
   if (!settings) {
-    return res.json({ tempMin: 20, tempMax: 28, phMin: 6.5, phMax: 8.5, oxygenMin: 5.0, rainMax: 60.0, smsAlerts: false, emailAlerts: false });
+    return res.json({ tempMin: 20, tempMax: 28, phMin: 6.5, phMax: 8.5, oxygenMin: 5.0, rainMax: 60.0, latitude: 52.52, longitude: 13.41, smsAlerts: false, emailAlerts: false });
   }
-  const { gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, oxygenMin, rainMax, smsAlerts, emailAlerts } = settings;
-  res.json({ gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, oxygenMin, rainMax, smsAlerts, emailAlerts });
+  const { gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, oxygenMin, rainMax, latitude, longitude, smsAlerts, emailAlerts, weatherTemp, weatherHumidity, weatherWindSpeed, weatherRain, weatherCode, weatherStatus, weatherTime, weatherElevation } = settings;
+  res.json({ gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, oxygenMin, rainMax, latitude, longitude, smsAlerts, emailAlerts, weatherTemp, weatherHumidity, weatherWindSpeed, weatherRain, weatherCode, weatherStatus, weatherTime, weatherElevation });
 });
 
 // PUT /api/settings — save system settings
 router.put('/', async (req, res) => {
-  const allowed = ['gatewayIp', 'mqttPort', 'tempMin', 'tempMax', 'phMin', 'phMax', 'oxygenMin', 'rainMax', 'smsAlerts', 'emailAlerts'];
+  const allowed = ['gatewayIp', 'mqttPort', 'tempMin', 'tempMax', 'phMin', 'phMax', 'oxygenMin', 'rainMax', 'latitude', 'longitude', 'smsAlerts', 'emailAlerts'];
   const update = {};
 
   allowed.forEach((key) => {
@@ -41,14 +42,25 @@ router.put('/', async (req, res) => {
     query = existing ? { _id: existing._id } : { userId: ANONYMOUS_USER_ID };
   }
 
-  const settings = await SystemSettings.findOneAndUpdate(
+  let settings = await SystemSettings.findOneAndUpdate(
     query,
     update,
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
 
-  const { gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, oxygenMin, rainMax, smsAlerts, emailAlerts } = settings;
-  res.json({ gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, oxygenMin, rainMax, smsAlerts, emailAlerts });
+  // Trigger weather scan immediately if location has changed
+  if (update.latitude !== undefined || update.longitude !== undefined) {
+    const io = req.app.get('io');
+    try {
+      await checkWeatherAndControlMotor(io);
+      settings = await SystemSettings.findById(settings._id);
+    } catch (err) {
+      console.error('[Settings API] Failed to run immediate weather check:', err.message);
+    }
+  }
+
+  const { gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, oxygenMin, rainMax, latitude, longitude, smsAlerts, emailAlerts, weatherTemp, weatherHumidity, weatherWindSpeed, weatherRain, weatherCode, weatherStatus, weatherTime, weatherElevation } = settings;
+  res.json({ gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, oxygenMin, rainMax, latitude, longitude, smsAlerts, emailAlerts, weatherTemp, weatherHumidity, weatherWindSpeed, weatherRain, weatherCode, weatherStatus, weatherTime, weatherElevation });
 });
 
 module.exports = router;

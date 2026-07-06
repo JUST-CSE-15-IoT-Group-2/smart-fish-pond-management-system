@@ -10,6 +10,7 @@ const cookieParser = require('cookie-parser');
 
 const connectDB = require('./db');
 const { initSocket } = require('./socket');
+const { initWeatherService } = require('./services/weatherService');
 
 // ─── Routes ────────────────────────────────────────────────────────────────
 const authRoutes = require('./routes/auth');
@@ -87,6 +88,9 @@ connectDB().then(() => {
     console.log(`[FPMS Backend] LAN accessible — use your machine's local IP, e.g. http://192.168.x.x:${PORT}`);
     console.log(`[FPMS Backend] WebSocket ready`);
     console.log(`[FPMS Backend] CORS: open to all origins`);
+
+    // Initialize background weather service
+    initWeatherService(io);
   });
 });
 

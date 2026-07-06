@@ -26,10 +26,10 @@
 const char* WIFI_SSID     = "RAIHAN";
 const char* WIFI_PASSWORD = "32145678";
 
-const char* BACKEND_IP  = "192.168.104.15";   // ← PC's LAN IP (run `ipconfig` to check)
-const char* SENSOR_URL  = "http://"+BACKEND_IP+":5000/api/sensors/reading";
-const char* MOTOR_URL   = "http://"+BACKEND_IP+":5000/api/controls/motor";
-const char* FEEDING_URL = "http://"+BACKEND_IP+":5000/api/controls/feeding/state";
+const char* BACKEND_IP  = "10.163.247.15";   // ← PC's LAN IP (run `ipconfig` to check)
+const String SENSOR_URL  = String("http://") + BACKEND_IP + ":5000/api/sensors/reading";
+const String MOTOR_URL   = String("http://") + BACKEND_IP + ":5000/api/controls/motor";
+const String FEEDING_URL = String("http://") + BACKEND_IP + ":5000/api/controls/feeding/state";
 const char* DEVICE_ID   = "pond-01";
 
 // ── Pin numbers ───────────────────────────────────────────────
@@ -117,7 +117,7 @@ int postReading(const char* type, float value, const char* unit) {
 // ─────────────────────────────────────────────────────────────
 // GET JSON from a URL
 // ─────────────────────────────────────────────────────────────
-bool getJson(const char* url, JsonDocument& doc) {
+bool getJson(String url, JsonDocument& doc) {
   HTTPClient http;
   http.begin(url);
   int code = http.GET();

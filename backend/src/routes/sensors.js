@@ -3,6 +3,8 @@ const webpush = require('web-push');
 const SensorReading = require('../models/SensorReading');
 const PushSubscription = require('../models/PushSubscription');
 const SystemSettings = require('../models/SystemSettings');
+const MotorState = require('../models/MotorState');
+const FeedingSchedule = require('../models/FeedingSchedule');
 
 const router = express.Router();
 
@@ -57,6 +59,44 @@ router.post('/reading', async (req, res) => {
       deviceId: reading.deviceId,
       recordedAt: reading.recordedAt,
     });
+  }
+
+  // If rain sensor reading goes above 40%, pause feeder and turn ON oxygen motor
+  if (reading.type === 'rain' && reading.value > 40.0) {
+    console.log(`[Rain Trigger] Rain level ${reading.value}% is above 40%. Pausing feeder and enabling oxygen motor.`);
+    try {
+      // 1. Pause feeder: set manualMode to true and manualActive to false
+      const schedule = await FeedingSchedule.findOneAndUpdate(
+        {},
+        { manualMode: true, manualActive: false },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      if (io) {
+        io.emit('feeding:update', {
+          times:           schedule.times,
+          durationMinutes: schedule.durationMinutes,
+          manualMode:      schedule.manualMode,
+          manualActive:    schedule.manualActive,
+        });
+      }
+
+      // 2. Turn oxygen motor ON (speed 100)
+      const motor = await MotorState.findOneAndUpdate(
+        { deviceId: 'pond-motor-01' },
+        { enabled: true, speed: 100 },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      if (io) {
+        io.emit('motor:update', {
+          enabled:          motor.enabled,
+          connectionActive: motor.connectionActive,
+          speed:            motor.speed,
+          autoMode:         motor.autoMode,
+        });
+      }
+    } catch (err) {
+      console.error('[Rain Trigger] Error executing rain-based actuator overrides:', err.message);
+    }
   }
 
   // Trigger threshold evaluations and push alerts asynchronously

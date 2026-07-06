@@ -43,15 +43,16 @@ router.get('/motor/status', async (req, res) => {
 router.get('/motor', async (req, res) => {
   let state = await MotorState.findOne({ deviceId: DEVICE_ID });
   if (!state) state = await MotorState.create({ deviceId: DEVICE_ID });
-  res.json({ enabled: state.enabled, connectionActive: state.connectionActive, speed: state.speed });
+  res.json({ enabled: state.enabled, connectionActive: state.connectionActive, speed: state.speed, autoMode: state.autoMode });
 });
 
 // PUT /api/controls/motor
-// Body: { enabled: Boolean, connectionActive: Boolean, speed: Number (0-100) }
+// Body: { enabled: Boolean, connectionActive: Boolean, speed: Number (0-100), autoMode: Boolean }
 router.put('/motor', async (req, res) => {
   const update = {};
   if (typeof req.body.enabled === 'boolean') update.enabled = req.body.enabled;
   if (typeof req.body.connectionActive === 'boolean') update.connectionActive = req.body.connectionActive;
+  if (typeof req.body.autoMode === 'boolean') update.autoMode = req.body.autoMode;
   if (req.body.speed !== undefined) {
     const speed = Number(req.body.speed);
     if (isNaN(speed) || speed < 0 || speed > 100) {
@@ -61,7 +62,7 @@ router.put('/motor', async (req, res) => {
   }
 
   if (Object.keys(update).length === 0) {
-    return res.status(400).json({ error: 'Provide at least one of: `enabled`, `connectionActive`, `speed`' });
+    return res.status(400).json({ error: 'Provide at least one of: `enabled`, `connectionActive`, `speed`, `autoMode`' });
   }
 
   // If connection goes offline, motor must stop
@@ -79,10 +80,11 @@ router.put('/motor', async (req, res) => {
       enabled:          state.enabled,
       connectionActive: state.connectionActive,
       speed:            state.speed,
+      autoMode:         state.autoMode,
     });
   }
 
-  res.json({ enabled: state.enabled, connectionActive: state.connectionActive, speed: state.speed });
+  res.json({ enabled: state.enabled, connectionActive: state.connectionActive, speed: state.speed, autoMode: state.autoMode });
 });
 
 // ─── PUBLIC: Feeding state (read-only, used by ESP32) ───────────────────────
