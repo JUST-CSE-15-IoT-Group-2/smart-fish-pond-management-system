@@ -1,9 +1,11 @@
 /*  ============================================================
     FPMS — Fish Pond Management System
-    ESP32 Node  v5.4
+    ESP32 Node  v6.0
 
-    Feeder Motor  → GPIO 23
-    Oxygen Pump   → GPIO 22
+    Actuators:
+      Feeder Motor  → GPIO 23 (Relay, Active LOW)
+      Servo Gate    → GPIO 18 (MG 996R Servo, PWM) [Configurable via SERVO_PIN]
+      Oxygen Pump   → GPIO 22 (Relay, Active LOW)
 
     Sensors:
       GPIO  4  DS18B20 temperature
@@ -11,9 +13,9 @@
       GPIO 33  Turbidity (analog, 0–100 NTU)
       GPIO 32  Raindrop (analog)
 
-    PIN RULE:
-      Turn ON  →  pinMode(pin, OUTPUT);  digitalWrite(pin, LOW);
-      Turn OFF →  pinMode(pin, INPUT);   // abandon pin, relay drops
+    FEEDING SEQUENCE:
+      - START: (1) Open Servo Gate → (2) Turn ON Feeder Motor
+      - STOP:  (1) Close Servo Gate → (2) Turn OFF Feeder Motor
     ============================================================ */
 
 #include <WiFi.h>
@@ -21,16 +23,21 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <ArduinoJson.h>
+#include <ESP32Servo.h>
 #include <time.h>
 
 const char* WIFI_SSID     = "RAIHAN";
 const char* WIFI_PASSWORD = "32145678";
 
-const char* BACKEND_IP  = "192.168.68.127";   // ← PC's LAN IP (run `ipconfig` to check)
-const char* SENSOR_URL  = "http://192.168.98.15:5000/api/sensors/reading";
-const char* MOTOR_URL   = "http://192.168.98.15:5000/api/controls/motor";
-const char* FEEDING_URL = "http://192.168.98.15:5000/api/controls/feeding/state";
-const char* DEVICE_ID   = "pond-01";
+const char* BACKEND_IP   = "192.168.68.101";   // ← PC's LAN IP (run `ipconfig` in cmd to check)
+const int   BACKEND_PORT = 5000;               // ← Backend server port
+const char* DEVICE_ID    = "pond-01";
+
+// ── Backend API Endpoints (Auto-constructed from BACKEND_IP & BACKEND_PORT) ──
+String BASE_URL;
+String SENSOR_URL;
+String MOTOR_URL;
+String FEEDING_URL;
 
 // ── Pin numbers ───────────────────────────────────────────────
 #define FEEDER_PIN    23
@@ -40,6 +47,16 @@ const char* DEVICE_ID   = "pond-01";
 #define TURBIDITY_PIN 33   // Analog input (0–100 NTU)
 #define RAIN_PIN      32
 
+// ── Feeder Servo Gate (MG 996R — 360° Continuous Rotation) ─────────────────
+#define SERVO_PIN            21    // ← GPIO for MG 996R Servo signal
+const int SERVO_STOP         = 90;  // 90 = STOP (0 RPM)
+const int SERVO_FORWARD      = 0;   // 0 = Full speed forward
+const int SERVO_HALF_TURN_MS = 840; // ← TUNE THIS: milliseconds to spin exactly 180°
+                                     //   Too short = less than 180°, too long = overshoots
+                                     //   Typical MG 996R: ~450-600ms for half turn at full speed
+
+Servo gateServo;
+
 // ── DS18B20 ───────────────────────────────────────────────────
 OneWire oneWire(TEMP_PIN);
 DallasTemperature tempSensor(&oneWire);
@@ -48,7 +65,7 @@ DallasTemperature tempSensor(&oneWire);
 unsigned long lastSensorTime = 0;
 unsigned long lastPollTime   = 0;
 
-// ── Motor states ──────────────────────────────────────────────
+// ── Actuator states ───────────────────────────────────────────
 bool feederIsOn = false;
 bool oxygenIsOn = false;
 
@@ -58,21 +75,109 @@ unsigned long feederOnAt = 0;
 int feederDurationMs     = 60000;
 
 // ─────────────────────────────────────────────────────────────
-// Print what the motors are doing right now
+// Print what the actuators are doing right now
 // ─────────────────────────────────────────────────────────────
 void printMotorStatus() {
-  Serial.println("------ Motor Status ------");
+  Serial.println("------ Actuator Status ------");
   if (oxygenIsOn) {
-    Serial.println("Oxygen Pump (GPIO 22) : ON");
+    Serial.println("Oxygen Pump  (GPIO 22) : ON");
   } else {
-    Serial.println("Oxygen Pump (GPIO 22) : OFF");
+    Serial.println("Oxygen Pump  (GPIO 22) : OFF");
   }
   if (feederIsOn) {
-    Serial.println("Feeder      (GPIO 23) : ON");
+    Serial.println("Feeder Motor (GPIO 23) : ON");
+    Serial.print("Servo Gate   (GPIO ");
+    Serial.print(SERVO_PIN);
+    Serial.println(") : OPEN");
   } else {
-    Serial.println("Feeder      (GPIO 23) : OFF");
+    Serial.println("Feeder Motor (GPIO 23) : OFF");
+    Serial.print("Servo Gate   (GPIO ");
+    Serial.print(SERVO_PIN);
+    Serial.println(") : CLOSED");
   }
-  Serial.println("--------------------------");
+  Serial.println("-----------------------------");
+}
+
+// ─────────────────────────────────────────────────────────────
+// Servo Gate Helper: Spin forward 180° then stop
+//   openGate  → spins 180° forward (food drops)
+//   closeGate → spins 180° forward again (gate returns to start)
+//   Full ON→OFF cycle = 360° total = back to original position
+// ─────────────────────────────────────────────────────────────
+void spinServoHalfTurn(const char* label) {
+  Serial.print("SERVO: ");
+  Serial.print(label);
+  Serial.println(" — spinning 180° forward...");
+  gateServo.write(SERVO_FORWARD);      // Start spinning forward
+  delay(SERVO_HALF_TURN_MS);           // Spin for exactly half a turn
+  gateServo.write(SERVO_STOP);         // Stop immediately
+  delay(200);                          // Let motor settle
+  Serial.print("SERVO: ");
+  Serial.print(label);
+  Serial.println(" — 180° complete, stopped.");
+}
+
+void openGate() {
+  Serial.println("SERVO: OPEN GATE — spinning forward...");
+  gateServo.write(SERVO_FORWARD);      // Spin forward (0)
+  delay(SERVO_HALF_TURN_MS);
+  gateServo.write(SERVO_STOP);         // Stop
+  delay(200);
+  Serial.println("SERVO: OPEN GATE — complete, stopped.");
+}
+
+void closeGate() {
+  Serial.println("SERVO: CLOSE GATE — spinning backward (reverse)...");
+  gateServo.write(180);                // Spin reverse (180 = full speed backward)
+  delay(SERVO_HALF_TURN_MS);           // Same duration as openGate
+  gateServo.write(SERVO_STOP);         // Stop
+  delay(200);
+  Serial.println("SERVO: CLOSE GATE — complete, stopped.");
+}
+
+// ─────────────────────────────────────────────────────────────
+// Feeding Sequences (First Servo -> Then Feeder Motor)
+// ─────────────────────────────────────────────────────────────
+
+// Sequence 1: Start feeding
+// 1. First rotate Servo to OPEN gate
+// 2. Then start Feeder Motor (Relay GPIO 23)
+void startFeedingSequence(const char* reason) {
+  if (feederIsOn) return;
+
+  Serial.print("\n>>> START FEEDING [");
+  Serial.print(reason);
+  Serial.println("] >>>");
+
+  // Step 1: Open servo gate first
+  openGate();
+
+  // Step 2: Start feeding motor
+  pinMode(FEEDER_PIN, OUTPUT);
+  digitalWrite(FEEDER_PIN, LOW); // Active LOW relay
+  feederIsOn = true;
+  Serial.println("FEEDER: GPIO 23 → OUTPUT LOW → Feeder Motor turned ON");
+  printMotorStatus();
+}
+
+// Sequence 2: Stop feeding
+// 1. First rotate Servo to CLOSE gate
+// 2. Then stop Feeder Motor and abandon pin (high-Z safety)
+void stopFeedingSequence(const char* reason) {
+  if (!feederIsOn) return;
+
+  Serial.print("\n<<< STOP FEEDING [");
+  Serial.print(reason);
+  Serial.println("] <<<");
+
+  // Step 1: Close servo gate first
+  closeGate();
+
+  // Step 2: Stop feeding motor and abandon pin
+  pinMode(FEEDER_PIN, INPUT); // High-Z floating pin for relay safety
+  feederIsOn = false;
+  Serial.println("FEEDER: GPIO 23 → INPUT → Feeder Motor turned OFF (pin abandoned)");
+  printMotorStatus();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -92,7 +197,7 @@ int readADCAvg(int pin) {
 // ─────────────────────────────────────────────────────────────
 int postReading(const char* type, float value, const char* unit) {
   HTTPClient http;
-  http.begin(SENSOR_URL);
+  http.begin(SENSOR_URL.c_str());
   http.addHeader("Content-Type", "application/json");
   http.setTimeout(5000); // 5 second timeout
   String body = "{\"type\":\"";
@@ -151,9 +256,21 @@ int timeStringToMinutes(const char* s) {
 void setup() {
   Serial.begin(115200);
   delay(300);
-  Serial.println("=== FPMS v5.3 starting ===");
+  Serial.println("=== FPMS v6.0 starting (Feeder Motor + Servo Gate) ===");
 
-  // Abandon both motor pins at boot — relay coils are dead
+  // Build Base URL & Endpoint URLs dynamically from BACKEND_IP and BACKEND_PORT
+  BASE_URL    = "http://" + String(BACKEND_IP) + ":" + String(BACKEND_PORT);
+  SENSOR_URL  = BASE_URL + "/api/sensors/reading";
+  MOTOR_URL   = BASE_URL + "/api/controls/motor";
+  FEEDING_URL = BASE_URL + "/api/controls/feeding/state";
+
+  Serial.println("Target Backend Endpoints:");
+  Serial.print("  Base URL    : "); Serial.println(BASE_URL);
+  Serial.print("  Sensor POST : "); Serial.println(SENSOR_URL);
+  Serial.print("  Motor GET   : "); Serial.println(MOTOR_URL);
+  Serial.print("  Feeding GET : "); Serial.println(FEEDING_URL);
+
+  // Abandon both relay pins at boot — relay coils are dead
   pinMode(FEEDER_PIN, INPUT);
   feederIsOn = false;
   Serial.println("GPIO 23 (Feeder)      → INPUT at boot (OFF)");
@@ -161,6 +278,18 @@ void setup() {
   pinMode(OXYGEN_PIN, INPUT);
   oxygenIsOn = false;
   Serial.println("GPIO 22 (Oxygen Pump) → INPUT at boot (OFF)");
+
+  // Initialize MG 996R Servo Gate
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
+  gateServo.setPeriodHertz(50);             // Standard 50Hz servo PWM
+  gateServo.attach(SERVO_PIN, 500, 2400);   // Attach with 500us - 2400us pulse widths
+  gateServo.write(SERVO_STOP);              // 90 = STOP at boot (no spinning)
+  Serial.print("Servo Gate (MG 996R)  → Attached to GPIO ");
+  Serial.print(SERVO_PIN);
+  Serial.println(" (CLOSED at boot)");
 
   printMotorStatus();
 
@@ -199,7 +328,7 @@ void setup() {
     Serial.print("  Meaning: ");
     switch (wifiStatus) {
       case 0:  Serial.println("WL_IDLE_STATUS — WiFi is idle. Try reset."); break;
-      case 1:  Serial.println("WL_NO_SSID_AVAIL — Hotspot 'HONOR' NOT FOUND. Check hotspot name (case-sensitive) or 2.4GHz band."); break;
+      case 1:  Serial.println("WL_NO_SSID_AVAIL — Hotspot NOT FOUND. Check hotspot name (case-sensitive) or 2.4GHz band."); break;
       case 2:  Serial.println("WL_SCAN_COMPLETED — Scan done but not connected."); break;
       case 3:  Serial.println("WL_CONNECTED — Connected (should not reach here)."); break;
       case 4:  Serial.println("WL_CONNECT_FAILED — WRONG PASSWORD or auth failure."); break;
@@ -218,8 +347,6 @@ void loop() {
 
   // ════════════════════════════════════════════════
   // WIFI RECONNECT — only if disconnected, once per 30s
-  // (WiFi.setAutoReconnect handles most cases automatically;
-  //  this is a fallback for stubborn disconnections)
   // ════════════════════════════════════════════════
   static unsigned long lastWifiAttempt = 0;
   if (WiFi.status() != WL_CONNECTED) {
@@ -229,7 +356,6 @@ void loop() {
       WiFi.disconnect();
       delay(100);
       WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-      // Wait up to 10s
       int retries = 0;
       while (WiFi.status() != WL_CONNECTED && retries < 20) {
         delay(500);
@@ -268,9 +394,6 @@ void loop() {
     }
 
     // pH Calibration
-    // 1. Put the probe in a pH 7.0 buffer solution (or clean tap water).
-    // 2. Adjust the offset potentiometer on the module until the Serial Monitor prints V ≈ 2.000V.
-    // 3. If you can't get exactly 2.000V, edit the PH_7_VOLTAGE constant below to match the printed voltage.
     const float PH_7_VOLTAGE = 2.000f; 
     int phRaw   = readADCAvg(PH_PIN);
     float phV   = phRaw * (3.3f / 4095.0f);
@@ -295,8 +418,6 @@ void loop() {
     }
 
     // Turbidity — analog on GPIO 33
-    // Lower ADC = clearer water (most turbidity sensors: higher voltage = clearer)
-    // Map ADC 0–4095 → NTU 100–0 (inverted: 0 ADC = max turbid, 4095 = clear)
     int   turbRaw = readADCAvg(TURBIDITY_PIN);
     float turbV   = turbRaw * (3.3f / 4095.0f);
     float turbNTU = constrain((1.0f - (turbRaw / 4095.0f)) * 100.0f, 0.0f, 100.0f);
@@ -335,7 +456,7 @@ void loop() {
       postReading("rain", wetness, "%");
     }
 
-    // Always print motor status after sensor readings
+    // Always print actuator status after sensor readings
     printMotorStatus();
   }
 
@@ -349,15 +470,13 @@ void loop() {
     // OXYGEN PUMP — GPIO 22
     // ────────────────────────────────────────────
     JsonDocument oxygenDoc;
-    if (getJson(MOTOR_URL, oxygenDoc)) {
+    if (getJson(MOTOR_URL.c_str(), oxygenDoc)) {
 
       bool enabled    = oxygenDoc["enabled"]          | false;
       bool connActive = oxygenDoc["connectionActive"] | true;
 
       if (enabled == true && connActive == true) {
-        // Backend says pump should be ON
         if (oxygenIsOn == false) {
-          // It is currently OFF, so turn it ON
           pinMode(OXYGEN_PIN, OUTPUT);
           digitalWrite(OXYGEN_PIN, LOW);
           oxygenIsOn = true;
@@ -365,9 +484,7 @@ void loop() {
           printMotorStatus();
         }
       } else {
-        // Backend says pump should be OFF
         if (oxygenIsOn == true) {
-          // It is currently ON, so turn it OFF and abandon the pin
           pinMode(OXYGEN_PIN, INPUT);
           oxygenIsOn = false;
           Serial.println("OXYGEN: GPIO 22 → INPUT → Pump turned OFF (pin abandoned)");
@@ -377,10 +494,10 @@ void loop() {
     }
 
     // ────────────────────────────────────────────
-    // FEEDER MOTOR — GPIO 23
+    // FEEDER MOTOR & SERVO GATE — GPIO 23 & GPIO 18
     // ────────────────────────────────────────────
     JsonDocument feederDoc;
-    if (getJson(FEEDING_URL, feederDoc)) {
+    if (getJson(FEEDING_URL.c_str(), feederDoc)) {
 
       bool manualMode   = feederDoc["manualMode"]      | false;
       bool manualActive = feederDoc["manualActive"]    | false;
@@ -389,46 +506,37 @@ void loop() {
 
       if (manualMode == true) {
         // ── MANUAL MODE ────────────────────────────
+        feederRunning = false; // Reset scheduled tracker when in manual mode
+
         if (manualActive == true) {
-          // Backend wants feeder ON
+          // User requested Feeder ON: First Servo Gate opens, then Motor starts
           if (feederIsOn == false) {
-            // Currently OFF, turn it ON
-            pinMode(FEEDER_PIN, OUTPUT);
-            digitalWrite(FEEDER_PIN, LOW);
-            feederIsOn = true;
-            Serial.println("FEEDER: GPIO 23 → OUTPUT LOW → Feeder turned ON (manual)");
-            printMotorStatus();
+            startFeedingSequence("Manual Mode");
           }
         } else {
-          // Backend wants feeder OFF
+          // User requested Feeder OFF: First Servo Gate closes, then Motor stops
           if (feederIsOn == true) {
-            // Currently ON, turn it OFF and abandon the pin
-            pinMode(FEEDER_PIN, INPUT);
-            feederIsOn = false;
-            Serial.println("FEEDER: GPIO 23 → INPUT → Feeder turned OFF (manual, pin abandoned)");
-            printMotorStatus();
+            stopFeedingSequence("Manual Mode");
           }
         }
 
       } else {
         // ── SCHEDULED MODE ─────────────────────────
 
-        // If feeder is running, check if the time duration is done
+        // If feeder is currently running, check if duration is complete
         if (feederRunning == true) {
           unsigned long timeRunning = millis() - feederOnAt;
           if (timeRunning >= (unsigned long)feederDurationMs) {
-            // Duration finished, turn feeder OFF and abandon pin
-            pinMode(FEEDER_PIN, INPUT);
-            feederIsOn    = false;
+            // Duration completed: First close servo gate, then stop motor
+            stopFeedingSequence("Scheduled Timeout");
             feederRunning = false;
-            Serial.print("FEEDER: GPIO 23 → INPUT → Feeder turned OFF (scheduled, ran ");
+            Serial.print("FEEDER: Scheduled run complete (ran ");
             Serial.print(durMin);
-            Serial.println(" min, pin abandoned)");
-            printMotorStatus();
+            Serial.println(" min)");
           }
         }
 
-        // If feeder is not running, check if now matches a scheduled time
+        // If feeder is not running, check if current time matches scheduled time
         if (feederRunning == false) {
           struct tm timeInfo;
           if (getLocalTime(&timeInfo)) {
@@ -437,16 +545,13 @@ void loop() {
             for (JsonVariant entry : scheduledTimes) {
               int scheduledMinutes = timeStringToMinutes(entry.as<const char*>());
               if (scheduledMinutes >= 0 && nowMinutes == scheduledMinutes && timeInfo.tm_sec < 30) {
-                // This is the right time, turn feeder ON
-                pinMode(FEEDER_PIN, OUTPUT);
-                digitalWrite(FEEDER_PIN, LOW);
-                feederIsOn    = true;
+                // Scheduled time reached: First open servo gate, then start motor
+                startFeedingSequence("Scheduled Trigger");
                 feederRunning = true;
                 feederOnAt    = millis();
-                Serial.print("FEEDER: GPIO 23 → OUTPUT LOW → Feeder turned ON (scheduled, will run ");
+                Serial.print("FEEDER: Scheduled start for ");
                 Serial.print(durMin);
-                Serial.println(" min)");
-                printMotorStatus();
+                Serial.println(" min");
                 break;
               }
             }
@@ -455,9 +560,9 @@ void loop() {
 
         // Print current scheduled feeder state every poll
         if (feederRunning == true) {
-          Serial.println("FEEDER: scheduled run in progress...");
+          Serial.println("FEEDER: Scheduled run in progress...");
         } else {
-          Serial.println("FEEDER: scheduled, waiting for next time slot...");
+          Serial.println("FEEDER: Scheduled, waiting for next time slot...");
         }
       }
     }
