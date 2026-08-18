@@ -48,6 +48,11 @@ async function publicFetch(path, options = {}) {
 }
 
 export const authApi = {
+  login: ({ userId, password }) =>
+    apiFetch('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ userId, password }),
+    }),
   me: () => apiFetch('/api/auth/me'),
   logout: () => apiFetch('/api/auth/logout', { method: 'POST' }),
   // googleLoginUrl must be computed at runtime so it uses the correct hostname
@@ -55,11 +60,6 @@ export const authApi = {
     return typeof window !== 'undefined'
       ? `http://${window.location.hostname}:5000/api/auth/google`
       : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/auth/google`;
-  },
-  get devLoginUrl() {
-    return typeof window !== 'undefined'
-      ? `http://${window.location.hostname}:5000/api/auth/dev-login`
-      : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/auth/dev-login`;
   },
 };
 

@@ -20,9 +20,14 @@ const motorStateSchema = new mongoose.Schema(
     // Speed as a percentage: 0 = off, 100 = full speed
     speed: {
       type: Number,
-      default: 50,
+      default: 100,
       min: 0,
       max: 100,
+    },
+    // Manual override: true when turned on manually from frontend (bypasses auto rain sensor shutoff)
+    manualOverride: {
+      type: Boolean,
+      default: false,
     },
   },
   { timestamps: true }

@@ -3,19 +3,31 @@ const { v4: uuidv4 } = require('uuid');
 
 const userSchema = new mongoose.Schema(
   {
+    userId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      index: true,
+    },
+    password: {
+      type: String, // bcrypt hashed password
+    },
     googleId: {
       type: String,
-      required: true,
       unique: true,
+      sparse: true,
     },
     name: {
       type: String,
-      required: true,
+      default: 'Admin User',
     },
     email: {
       type: String,
-      required: true,
       unique: true,
+      sparse: true,
+      trim: true,
+      lowercase: true,
     },
     picture: {
       type: String,
@@ -24,7 +36,7 @@ const userSchema = new mongoose.Schema(
     role: {
       type: String,
       enum: ['admin', 'operator', 'viewer'],
-      default: 'operator',
+      default: 'admin',
     },
     apiKey: {
       type: String,

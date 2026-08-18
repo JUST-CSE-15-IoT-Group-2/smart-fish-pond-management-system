@@ -151,57 +151,84 @@ function LiveCard({ label, title, value, unit, statusText, bgClass, iconBgClass,
 }
 
 // ─── Rain Status Card ──────────────────────────────────────────────────────
-function RainCard({ value, loading }) {
+function RainCard({ value, loading, threshold = 40, autoOxygen = true }) {
   const wetness   = value ?? null;
   const isRaining = wetness != null && wetness > 5;
-  const rainStatus =
-    wetness == null        ? "Awaiting data" :
-    wetness < 5            ? "DRY"           :
-    wetness < 30           ? "Light Rain"    :
-    wetness < 60           ? "Moderate Rain" : "Heavy Rain";
+  const isTriggered = wetness != null && wetness >= threshold;
+  
+  let rainStatus = "Awaiting data";
+  if (wetness != null) {
+    if (wetness < 5) {
+      rainStatus = "DRY (Standby)";
+    } else if (wetness < threshold) {
+      rainStatus = `Light Rain (${wetness.toFixed(0)}% < ${threshold}% Limit)`;
+    } else {
+      rainStatus = autoOxygen 
+        ? `Heavy Rain (${wetness.toFixed(0)}% ≥ ${threshold}%) · O₂ Pump ON` 
+        : `Heavy Rain (${wetness.toFixed(0)}% ≥ ${threshold}%) · Alert`;
+    }
+  }
 
-  const bgColor = isRaining ? "bg-[#0c2340] border-[#1a4a7a]/40" : "bg-[#1a2e1a] border-brand-forest/30";
+  const bgColor = isTriggered
+    ? "bg-[#0b2447] border-blue-500/50"
+    : isRaining 
+    ? "bg-[#0c2340] border-[#1a4a7a]/40" 
+    : "bg-[#1a2e1a] border-brand-forest/30";
 
   return (
     <div className={`${bgColor} border text-white p-6 rounded-2xl shadow-lg flex items-center justify-between transition-all duration-300 hover:shadow-xl`}>
       <div className="space-y-2.5">
-        <span className="text-xs uppercase tracking-widest text-brand-moss font-semibold">Live Sensor #4</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs uppercase tracking-widest text-brand-moss font-semibold">Live Sensor #4</span>
+          {isTriggered && autoOxygen && (
+            <span className="text-[10px] bg-blue-500 text-white font-bold px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">
+              O₂ Motor Auto-Running
+            </span>
+          )}
+        </div>
         <h3 className="text-lg font-bold text-white opacity-90">Raindrop / Moisture</h3>
         <div className="flex items-baseline gap-1.5 mt-2">
           <span className="text-4xl font-extrabold tracking-tight">{loading ? "—" : wetness?.toFixed(1) ?? "—"}</span>
           <span className="text-lg text-brand-moss font-bold">%</span>
         </div>
         <div className="inline-flex items-center gap-1.5 bg-black/20 border border-white/10 px-3 py-1 rounded-full text-xs font-semibold text-brand-moss">
-          <span className={`w-1.5 h-1.5 rounded-full ${isRaining ? "bg-blue-400 animate-ping" : "bg-brand-moss animate-pulse"}`} />
+          <span className={`w-1.5 h-1.5 rounded-full ${isTriggered ? "bg-blue-400 animate-ping" : isRaining ? "bg-cyan-400 animate-pulse" : "bg-brand-moss animate-pulse"}`} />
           {rainStatus}
         </div>
       </div>
-      <div className={`${isRaining ? "bg-blue-800" : "bg-brand-forest"} p-4 rounded-2xl border border-white/10`}>
-        <CloudRain className={`w-8 h-8 text-white ${isRaining ? "animate-bounce" : ""}`} />
+      <div className={`${isTriggered ? "bg-blue-600 shadow-lg shadow-blue-500/30" : isRaining ? "bg-blue-800" : "bg-brand-forest"} p-4 rounded-2xl border border-white/10`}>
+        <CloudRain className={`w-8 h-8 text-white ${isTriggered ? "animate-bounce" : ""}`} />
       </div>
     </div>
   );
 }
 
 // ─── Turbidity Status Card (analog sensor — NTU scale) ─────────────────────
-function TurbidityCard({ value, loading }) {
+function TurbidityCard({ value, loading, threshold = 60 }) {
   let statusText = "Awaiting data";
   let isTurbid = false;
   if (value != null) {
     if (value < 20.0) {
       statusText = "CLEAR";
-    } else if (value < 60.0) {
-      statusText = "MODERATE";
+    } else if (value < threshold) {
+      statusText = `MODERATE (< ${threshold} NTU)`;
     } else {
-      statusText = "TURBID";
+      statusText = `TURBID (≥ ${threshold} NTU · ALARM)`;
       isTurbid = true;
     }
   }
 
   return (
-    <div className="bg-[#1e3a5f] border border-[#2a5298]/30 text-white p-6 rounded-2xl shadow-lg flex items-center justify-between transition-all duration-300 hover:shadow-xl hover:scale-[1.01]">
+    <div className={`${isTurbid ? "bg-[#3d1a24] border-rose-500/50" : "bg-[#1e3a5f] border-[#2a5298]/30"} text-white p-6 rounded-2xl shadow-lg flex items-center justify-between transition-all duration-300 hover:shadow-xl hover:scale-[1.01]`}>
       <div className="space-y-2.5">
-        <span className="text-xs uppercase tracking-widest text-brand-moss font-semibold">Live Sensor #2</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs uppercase tracking-widest text-brand-moss font-semibold">Live Sensor #2</span>
+          {isTurbid && (
+            <span className="text-[10px] bg-rose-500 text-white font-bold px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">
+              Clarity Alarm
+            </span>
+          )}
+        </div>
         <h3 className="text-lg font-bold text-white opacity-90">Water Turbidity</h3>
         <div className="flex items-baseline gap-1.5 mt-2">
           <span className="text-4xl font-extrabold tracking-tight">
@@ -214,8 +241,8 @@ function TurbidityCard({ value, loading }) {
           Status: {statusText}
         </div>
       </div>
-      <div className="bg-[#2a5298] p-4 rounded-2xl border border-white/10">
-        <CloudFog className="w-8 h-8 text-white" />
+      <div className={`${isTurbid ? "bg-rose-700 shadow-lg shadow-rose-600/30" : "bg-[#2a5298]"} p-4 rounded-2xl border border-white/10`}>
+        <CloudFog className={`w-8 h-8 text-white ${isTurbid ? "animate-pulse" : ""}`} />
       </div>
     </div>
   );
@@ -255,6 +282,9 @@ export default function UpdatesPage() {
     tempMax: 28,
     phMin: 6.5,
     phMax: 8.5,
+    turbidityMax: 60,
+    rainThreshold: 40,
+    autoOxygenOnRain: true,
   });
   const [loading, setLoading] = useState(true);
   const [showNotificationBanner, setShowNotificationBanner] = useState(false);
@@ -312,10 +342,24 @@ export default function UpdatesPage() {
         sensorsApi.latest(),
         settingsApi.get().catch(() => null),
       ]);
+
+      // Adjust pH to show less 4 on frontend
+      const adjustedPhReadings = phReadings.map((r) => ({
+        ...r,
+        value: Number((r.value - 4).toFixed(2)),
+      }));
+
+      const adjustedLatest = {
+        ...latestData,
+        ph: latestData.ph
+          ? { ...latestData.ph, value: Number((latestData.ph.value - 4).toFixed(2)) }
+          : null,
+      };
+
       setTempData(tempReadings);
-      setPhData(phReadings);
+      setPhData(adjustedPhReadings);
       setRainData(rainReadings);
-      setLatest(latestData);
+      setLatest(adjustedLatest);
       if (settingsData) {
         setSettings(settingsData);
       }
@@ -335,12 +379,18 @@ export default function UpdatesPage() {
       socketRef.current = socket;
 
       socket.on("sensor:update", (reading) => {
+        // Adjust pH to show less 4 on frontend
+        const adjustedValue = reading.type === "ph"
+          ? Number((reading.value - 4).toFixed(2))
+          : reading.value;
+
         setLatest((prev) => ({
           ...prev,
-          [reading.type]: { value: reading.value, unit: reading.unit, recordedAt: reading.recordedAt },
+          [reading.type]: { value: adjustedValue, unit: reading.unit, recordedAt: reading.recordedAt },
         }));
+
         if (reading.type === "temperature") setTempData((p) => [...p.slice(-11), reading]);
-        if (reading.type === "ph")          setPhData((p)   => [...p.slice(-11), reading]);
+        if (reading.type === "ph")          setPhData((p)   => [...p.slice(-11), { ...reading, value: adjustedValue }]);
         if (reading.type === "rain")        setRainData((p) => [...p.slice(-11), reading]);
       });
     });
@@ -355,7 +405,7 @@ export default function UpdatesPage() {
   const tempStatus = latest.temperature?.value >= settings.tempMin && latest.temperature?.value <= settings.tempMax ? "Optimal" : "Warning";
 
   const phValues = phData.map((d) => d.value);
-  const phMin    = phValues.length ? Math.min(...phValues) - 0.5 : 6;
+  const phMin    = phValues.length ? Math.min(...phValues) - 0.5 : 2;
   const phMax    = phValues.length ? Math.max(...phValues) + 0.5 : 9;
   const phVal    = latest.ph?.value;
   const phStatus = phVal == null ? "Awaiting data" : phVal >= settings.phMin && phVal <= settings.phMax ? "Optimal" : phVal < settings.phMin ? "Too Acidic" : "Too Alkaline";
@@ -431,7 +481,11 @@ export default function UpdatesPage() {
           icon={Thermometer}
           loading={loading}
         />
-        <TurbidityCard value={latest.turbidity?.value} loading={loading} />
+        <TurbidityCard
+          value={latest.turbidity?.value}
+          loading={loading}
+          threshold={settings.turbidityMax ?? 60}
+        />
       </div>
 
       {/* Live Cards — Row 2 */}
@@ -447,7 +501,12 @@ export default function UpdatesPage() {
           icon={FlaskConical}
           loading={loading}
         />
-        <RainCard value={latest.rain?.value} loading={loading} />
+        <RainCard
+          value={latest.rain?.value}
+          loading={loading}
+          threshold={settings.rainThreshold ?? 40}
+          autoOxygen={settings.autoOxygenOnRain ?? true}
+        />
       </div>
 
       {/* Charts */}
@@ -475,7 +534,7 @@ export default function UpdatesPage() {
 
         <ChartCard
           title="Rain / Wetness Trend"
-          subtitle="0% = dry, 100% = fully wet"
+          subtitle={`Auto-activates oxygen motor at ≥ ${settings.rainThreshold ?? 40}%`}
           chartProps={{
             data: rainData, minVal: rainMin, maxVal: rainMax,
             gradientId: "rainGradient", strokeColor: "#3b82f6", labelUnit: "%",
@@ -502,10 +561,9 @@ export default function UpdatesPage() {
             </div>
           </div>
           <div>
-            <h4 className="font-bold text-sm uppercase tracking-wider text-black/70 mb-3">Turbidity Note</h4>
+            <h4 className="font-bold text-sm uppercase tracking-wider text-black/70 mb-3">Weather Oxygen Automation</h4>
             <p className="text-xs text-black/60 leading-relaxed">
-              The turbidity sensor (GPIO 33) uses an analog input to measure water clarity in Nephelometric Turbidity Units (NTU).
-              It dynamically reports from <strong>0.0 NTU</strong> (fully clear) to <strong>100.0 NTU</strong> (highly turbid).
+              When rain intensity meets or exceeds <strong>{settings.rainThreshold ?? 40}%</strong>, the system activates the oxygen dissolving pump to maintain dissolved oxygen levels during heavy weather.
             </p>
           </div>
         </div>
@@ -517,7 +575,7 @@ export default function UpdatesPage() {
         <div className="space-y-0.5">
           <h4 className="text-xs font-bold uppercase tracking-wider">Analysis Notice</h4>
           <p className="text-xs text-black/75 leading-relaxed">
-            Optimal conditions: temperature {settings.tempMin}–{settings.tempMax} °C · pH {settings.phMin}–{settings.phMax} · turbidity CLEAR · no rain.
+            Optimal conditions: temperature {settings.tempMin}–{settings.tempMax} °C · pH {settings.phMin}–{settings.phMax} · turbidity &lt; {settings.turbidityMax ?? 60} NTU · rain &lt; {settings.rainThreshold ?? 40}% (triggers oxygen pump).
             All sensors stream live via WebSocket — values update automatically.
           </p>
         </div>

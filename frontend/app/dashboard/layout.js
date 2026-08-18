@@ -3,41 +3,36 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, Sliders, Settings, User, Menu, X, LogOut, Waves } from "lucide-react";
+import { Bell, Sliders, Settings, User, Menu, X, LogOut, Waves, ShieldAlert } from "lucide-react";
 import { authApi } from "../../lib/api";
 
 export default function DashboardLayout({ children }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  // status: 'loading' | 'ok' | 'fail'  — single state keeps hook count stable for HMR
   const [auth, setAuth] = useState({ status: 'loading', user: null });
   const pathname = usePathname();
   const router = useRouter();
 
-  // Fetch current user on mount.
-  // After a Google OAuth redirect the cookie can take a moment to propagate,
-  // so we retry up to 3 times with increasing delays before giving up.
   useEffect(() => {
     let cancelled = false;
 
-    const tryAuth = async (attempt = 0) => {
+    const checkAuth = async () => {
       try {
         const user = await authApi.me();
-        if (!cancelled) setAuth({ status: 'ok', user });
-      } catch {
-        if (cancelled) return;
-        if (attempt < 3) {
-          // Back off: 800ms, 1600ms, 2400ms
-          setTimeout(() => tryAuth(attempt + 1), 800 * (attempt + 1));
-        } else {
-          // Confirmed not authenticated after 3 attempts — go home
-          if (!cancelled) setAuth({ status: 'fail', user: null });
-          router.push("/");
+        if (!cancelled) {
+          setAuth({ status: 'ok', user });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setAuth({ status: 'unauthorized', user: null });
+          router.replace("/");
         }
       }
     };
 
-    tryAuth();
-    return () => { cancelled = true; };
+    checkAuth();
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   const currentUser = auth.user;
@@ -63,9 +58,8 @@ export default function DashboardLayout({ children }) {
     return active ? active.name : "Dashboard";
   };
 
-  // Initials from name (e.g. "John Doe" → "JD")
   const getInitials = (name) => {
-    if (!name) return "OP";
+    if (!name) return "AD";
     return name
       .split(" ")
       .map((w) => w[0])
@@ -74,26 +68,34 @@ export default function DashboardLayout({ children }) {
       .slice(0, 2);
   };
 
-  // Always render the full layout with children so Next.js App Router's
-  // internal useMemo count stays stable. Show loading as a full-screen
-  // overlay instead of an early return that omits children entirely.
-  const isLoading = auth.status === "loading";
+  if (auth.status === "loading") {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center gap-4 text-white">
+        <div className="bg-brand-forest p-4 rounded-2xl shadow-xl">
+          <Waves className="w-8 h-8 text-brand-moss animate-pulse" />
+        </div>
+        <p className="text-brand-moss text-xs font-bold tracking-widest uppercase animate-pulse">
+          Verifying security authorization…
+        </p>
+      </div>
+    );
+  }
+
+  if (auth.status === "unauthorized") {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center gap-4 text-white">
+        <div className="bg-red-500/20 p-4 rounded-2xl border border-red-500/30">
+          <ShieldAlert className="w-8 h-8 text-red-400" />
+        </div>
+        <p className="text-red-300 text-xs font-bold tracking-widest uppercase">
+          Access Denied. Redirecting to login…
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white text-black flex font-sans">
-
-      {/* Full-screen auth loading overlay — sits on top, children still mount */}
-      {isLoading && (
-        <div className="fixed inset-0 bg-brand-slate z-[100] flex flex-col items-center justify-center gap-4">
-          <div className="bg-brand-forest p-4 rounded-2xl">
-            <Waves className="w-8 h-8 text-white animate-pulse" />
-          </div>
-          <p className="text-brand-moss text-sm font-semibold tracking-widest uppercase animate-pulse">
-            Verifying session…
-          </p>
-        </div>
-      )}
-
       {/* Mobile Menu Backdrop */}
       {mobileMenuOpen && (
         <div
@@ -113,7 +115,7 @@ export default function DashboardLayout({ children }) {
           <div className="h-20 px-6 flex items-center justify-between border-b border-brand-forest/10">
             <Link href="/" className="flex items-center gap-3">
               <div className="bg-brand-forest p-2 rounded-xl flex items-center justify-center">
-                <Waves className="w-5 h-5 text-white animate-pulse" />
+                <Waves className="w-5 h-5 text-brand-moss animate-pulse" />
               </div>
               <span className="font-extrabold tracking-wider text-lg">FPMS</span>
             </Link>
@@ -155,27 +157,27 @@ export default function DashboardLayout({ children }) {
           </nav>
         </div>
 
-        {/* Sidebar Footer — Real user info */}
+        {/* Sidebar Footer — Authenticated user info */}
         <div className="p-4 border-t border-brand-forest/10">
           <div className="flex items-center justify-between p-3 bg-brand-forest/20 rounded-xl border border-brand-sage/10 mb-3">
             <div className="flex items-center gap-3">
               {currentUser?.picture ? (
                 <img
                   src={currentUser.picture}
-                  alt={currentUser.name}
+                  alt={currentUser.name || currentUser.userId}
                   className="w-9 h-9 rounded-full object-cover border border-brand-moss"
                 />
               ) : (
                 <div className="w-9 h-9 rounded-full bg-brand-moss/30 border border-brand-moss flex items-center justify-center text-brand-moss font-bold text-sm">
-                  {getInitials(currentUser?.name)}
+                  {getInitials(currentUser?.name || currentUser?.userId)}
                 </div>
               )}
               <div>
                 <p className="text-xs font-bold text-white leading-none truncate max-w-[100px]">
-                  {currentUser?.name || "Loading..."}
+                  {currentUser?.name || currentUser?.userId || "Admin"}
                 </p>
                 <span className="text-[10px] text-brand-moss font-medium tracking-wide uppercase mt-1 inline-block">
-                  {currentUser?.role || "Operator"}
+                  {currentUser?.role || "Admin"}
                 </span>
               </div>
             </div>
@@ -193,7 +195,6 @@ export default function DashboardLayout({ children }) {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col md:pl-64 min-w-0 transition-all duration-300">
-
         {/* Top Header Bar */}
         <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-6 sticky top-0 z-30">
           <div className="flex items-center gap-4">
@@ -208,11 +209,10 @@ export default function DashboardLayout({ children }) {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* User avatar in header on mobile */}
             {currentUser?.picture && (
               <img
                 src={currentUser.picture}
-                alt={currentUser.name}
+                alt={currentUser.name || currentUser.userId}
                 className="w-8 h-8 rounded-full object-cover border border-brand-forest/30 md:hidden"
               />
             )}

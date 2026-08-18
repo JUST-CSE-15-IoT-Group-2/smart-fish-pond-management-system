@@ -25,12 +25,13 @@ function emitFeeding(req, schedule) {
 router.get('/motor/status', async (req, res) => {
   const state = await MotorState.findOne({ deviceId: DEVICE_ID });
   if (!state) {
-    return res.json({ enabled: false, connectionActive: true, speed: 0, status: 'STOPPED' });
+    return res.json({ enabled: false, connectionActive: true, speed: 0, manualOverride: false, status: 'STOPPED' });
   }
   res.json({
     enabled:          state.enabled,
     connectionActive: state.connectionActive,
     speed:            state.speed,
+    manualOverride:   state.manualOverride ?? false,
     status:           state.enabled ? 'RUNNING' : 'STOPPED',
     updatedAt:        state.updatedAt,
   });
@@ -40,15 +41,31 @@ router.get('/motor/status', async (req, res) => {
 // GET /api/controls/motor
 router.get('/motor', async (req, res) => {
   let state = await MotorState.findOne({ deviceId: DEVICE_ID });
-  if (!state) state = await MotorState.create({ deviceId: DEVICE_ID });
-  res.json({ enabled: state.enabled, connectionActive: state.connectionActive, speed: state.speed });
+  if (!state) state = await MotorState.create({ deviceId: DEVICE_ID, speed: 100 });
+  res.json({
+    enabled:          state.enabled,
+    connectionActive: state.connectionActive,
+    speed:            state.speed,
+    manualOverride:   state.manualOverride ?? false,
+  });
 });
 
 // PUT /api/controls/motor
-// Body: { enabled: Boolean, connectionActive: Boolean, speed: Number (0-100) }
+// Body: { enabled: Boolean, connectionActive: Boolean, speed: Number (0-100), manualOverride: Boolean }
 router.put('/motor', async (req, res) => {
   const update = {};
-  if (typeof req.body.enabled === 'boolean') update.enabled = req.body.enabled;
+  if (typeof req.body.enabled === 'boolean') {
+    update.enabled = req.body.enabled;
+    // When user manually enables/disables motor from UI, set or clear manualOverride
+    if (typeof req.body.manualOverride === 'boolean') {
+      update.manualOverride = req.body.manualOverride;
+    } else {
+      update.manualOverride = req.body.enabled; // true when manually ON, false when manually OFF
+    }
+  } else if (typeof req.body.manualOverride === 'boolean') {
+    update.manualOverride = req.body.manualOverride;
+  }
+
   if (typeof req.body.connectionActive === 'boolean') update.connectionActive = req.body.connectionActive;
   if (req.body.speed !== undefined) {
     const speed = Number(req.body.speed);
@@ -59,11 +76,14 @@ router.put('/motor', async (req, res) => {
   }
 
   if (Object.keys(update).length === 0) {
-    return res.status(400).json({ error: 'Provide at least one of: `enabled`, `connectionActive`, `speed`' });
+    return res.status(400).json({ error: 'Provide at least one of: `enabled`, `connectionActive`, `speed`, `manualOverride`' });
   }
 
-  // If connection goes offline, motor must stop
-  if (update.connectionActive === false) update.enabled = false;
+  // If connection goes offline, motor must stop and clear override
+  if (update.connectionActive === false) {
+    update.enabled = false;
+    update.manualOverride = false;
+  }
 
   const state = await MotorState.findOneAndUpdate(
     { deviceId: DEVICE_ID },
@@ -77,10 +97,16 @@ router.put('/motor', async (req, res) => {
       enabled:          state.enabled,
       connectionActive: state.connectionActive,
       speed:            state.speed,
+      manualOverride:   state.manualOverride ?? false,
     });
   }
 
-  res.json({ enabled: state.enabled, connectionActive: state.connectionActive, speed: state.speed });
+  res.json({
+    enabled:          state.enabled,
+    connectionActive: state.connectionActive,
+    speed:            state.speed,
+    manualOverride:   state.manualOverride ?? false,
+  });
 });
 
 // ─── PUBLIC: Feeding state (read-only, used by ESP32) ───────────────────────

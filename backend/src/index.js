@@ -81,7 +81,10 @@ app.use((err, _req, res, _next) => {
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────
-connectDB().then(() => {
+const { syncEnvUser } = require('./utils/syncUser');
+
+connectDB().then(async () => {
+  await syncEnvUser();
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`[FPMS Backend] Running on http://0.0.0.0:${PORT} (all interfaces)`);
     console.log(`[FPMS Backend] LAN accessible — use your machine's local IP, e.g. http://192.168.x.x:${PORT}`);

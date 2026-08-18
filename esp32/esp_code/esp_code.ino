@@ -29,13 +29,14 @@
 const char* WIFI_SSID     = "RAIHAN";
 const char* WIFI_PASSWORD = "32145678";
 
-const char* BACKEND_IP   = "192.168.68.101";   // ← PC's LAN IP (run `ipconfig` in cmd to check)
+const char* BACKEND_IP   = "10.205.158.15";   // ← PC's LAN IP (run `ipconfig` in cmd to check)
 const int   BACKEND_PORT = 5000;               // ← Backend server port
 const char* DEVICE_ID    = "pond-01";
 
 // ── Backend API Endpoints (Auto-constructed from BACKEND_IP & BACKEND_PORT) ──
 String BASE_URL;
 String SENSOR_URL;
+String BATCH_URL;
 String MOTOR_URL;
 String FEEDING_URL;
 
@@ -51,9 +52,12 @@ String FEEDING_URL;
 #define SERVO_PIN            21    // ← GPIO for MG 996R Servo signal
 const int SERVO_STOP         = 90;  // 90 = STOP (0 RPM)
 const int SERVO_FORWARD      = 0;   // 0 = Full speed forward
-const int SERVO_HALF_TURN_MS = 840; // ← TUNE THIS: milliseconds to spin exactly 180°
-                                     //   Too short = less than 180°, too long = overshoots
-                                     //   Typical MG 996R: ~450-600ms for half turn at full speed
+const int SERVO_REVERSE      = 0; // 180 = Full speed backward / reverse
+
+// Timing variables (tune each direction independently for perfect gate alignment):
+const int SERVO_OPEN_MS      = 940; // ← Milliseconds to spin forward (Go / Open gate)
+const int SERVO_CLOSE_MS     = 1000; // ← Milliseconds to spin backward (Come back / Return / Close gate)
+const int SERVO_HALF_TURN_MS = 840; // Kept for backwards compatibility
 
 Servo gateServo;
 
@@ -99,37 +103,36 @@ void printMotorStatus() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Servo Gate Helper: Spin forward 180° then stop
-//   openGate  → spins 180° forward (food drops)
-//   closeGate → spins 180° forward again (gate returns to start)
-//   Full ON→OFF cycle = 360° total = back to original position
+// Servo Gate Helpers:
+//   openGate  → spins forward for SERVO_OPEN_MS (gate opens)
+//   closeGate → spins backward for SERVO_CLOSE_MS (gate comes back / closes)
 // ─────────────────────────────────────────────────────────────
 void spinServoHalfTurn(const char* label) {
   Serial.print("SERVO: ");
   Serial.print(label);
-  Serial.println(" — spinning 180° forward...");
+  Serial.println(" — spinning forward...");
   gateServo.write(SERVO_FORWARD);      // Start spinning forward
-  delay(SERVO_HALF_TURN_MS);           // Spin for exactly half a turn
+  delay(SERVO_OPEN_MS);                // Spin for open duration
   gateServo.write(SERVO_STOP);         // Stop immediately
   delay(200);                          // Let motor settle
   Serial.print("SERVO: ");
   Serial.print(label);
-  Serial.println(" — 180° complete, stopped.");
+  Serial.println(" — complete, stopped.");
 }
 
 void openGate() {
-  Serial.println("SERVO: OPEN GATE — spinning forward...");
+  Serial.println("SERVO: OPEN GATE — spinning forward (going)...");
   gateServo.write(SERVO_FORWARD);      // Spin forward (0)
-  delay(SERVO_HALF_TURN_MS);
+  delay(SERVO_OPEN_MS);                // Go duration
   gateServo.write(SERVO_STOP);         // Stop
   delay(200);
   Serial.println("SERVO: OPEN GATE — complete, stopped.");
 }
 
 void closeGate() {
-  Serial.println("SERVO: CLOSE GATE — spinning backward (reverse)...");
-  gateServo.write(180);                // Spin reverse (180 = full speed backward)
-  delay(SERVO_HALF_TURN_MS);           // Same duration as openGate
+  Serial.println("SERVO: CLOSE GATE — spinning backward (coming back)...");
+  gateServo.write(SERVO_REVERSE);      // Spin reverse (180 = full speed backward)
+  delay(SERVO_CLOSE_MS);               // Come back duration
   gateServo.write(SERVO_STOP);         // Stop
   delay(200);
   Serial.println("SERVO: CLOSE GATE — complete, stopped.");
@@ -181,25 +184,51 @@ void stopFeedingSequence(const char* reason) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// ADC average
+// ADC average (fast non-blocking sampling)
 // ─────────────────────────────────────────────────────────────
 int readADCAvg(int pin) {
   long total = 0;
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 8; i++) {
     total += analogRead(pin);
-    delay(4);
+    delayMicroseconds(500);
   }
-  return total / 10;
+  return total / 8;
 }
 
 // ─────────────────────────────────────────────────────────────
-// POST one sensor value to backend
+// POST ALL sensor readings in ONE single fast batch HTTP call
+// ─────────────────────────────────────────────────────────────
+int postBatchReadings(float tempC, float phVal, float turbNTU, float wetness) {
+  HTTPClient http;
+  http.begin(BATCH_URL.c_str());
+  http.addHeader("Content-Type", "application/json");
+  http.setTimeout(1500); // Fast 1.5s timeout
+
+  String body = "{\"deviceId\":\"" + String(DEVICE_ID) + "\",\"readings\":[";
+  if (tempC != DEVICE_DISCONNECTED_C) {
+    body += "{\"type\":\"temperature\",\"value\":" + String(tempC, 2) + ",\"unit\":\"C\"},";
+  }
+  body += "{\"type\":\"ph\",\"value\":" + String(phVal, 2) + ",\"unit\":\"pH\"},";
+  body += "{\"type\":\"turbidity\",\"value\":" + String(turbNTU, 1) + ",\"unit\":\"NTU\"},";
+  body += "{\"type\":\"rain\",\"value\":" + String(wetness, 1) + ",\"unit\":\"%\"}";
+  body += "]}";
+
+  int code = http.POST(body);
+  http.end();
+
+  Serial.print("  BATCH POST (All 4 Sensors) → HTTP ");
+  Serial.println(code);
+  return code;
+}
+
+// ─────────────────────────────────────────────────────────────
+// POST one sensor value to backend (Fallback)
 // ─────────────────────────────────────────────────────────────
 int postReading(const char* type, float value, const char* unit) {
   HTTPClient http;
   http.begin(SENSOR_URL.c_str());
   http.addHeader("Content-Type", "application/json");
-  http.setTimeout(5000); // 5 second timeout
+  http.setTimeout(1500);
   String body = "{\"type\":\"";
   body += type;
   body += "\",\"value\":";
@@ -215,7 +244,7 @@ int postReading(const char* type, float value, const char* unit) {
   Serial.print("  POST ");
   Serial.print(type);
   Serial.print(" → HTTP ");
-  Serial.println(code); // 201=OK, -1=timeout/no connection
+  Serial.println(code);
   return code;
 }
 
@@ -225,6 +254,7 @@ int postReading(const char* type, float value, const char* unit) {
 bool getJson(const char* url, JsonDocument& doc) {
   HTTPClient http;
   http.begin(url);
+  http.setTimeout(1500);
   int code = http.GET();
   if (code != 200) {
     http.end();
@@ -261,12 +291,13 @@ void setup() {
   // Build Base URL & Endpoint URLs dynamically from BACKEND_IP and BACKEND_PORT
   BASE_URL    = "http://" + String(BACKEND_IP) + ":" + String(BACKEND_PORT);
   SENSOR_URL  = BASE_URL + "/api/sensors/reading";
+  BATCH_URL   = BASE_URL + "/api/sensors/batch";
   MOTOR_URL   = BASE_URL + "/api/controls/motor";
   FEEDING_URL = BASE_URL + "/api/controls/feeding/state";
 
   Serial.println("Target Backend Endpoints:");
   Serial.print("  Base URL    : "); Serial.println(BASE_URL);
-  Serial.print("  Sensor POST : "); Serial.println(SENSOR_URL);
+  Serial.print("  Batch POST  : "); Serial.println(BATCH_URL);
   Serial.print("  Motor GET   : "); Serial.println(MOTOR_URL);
   Serial.print("  Feeding GET : "); Serial.println(FEEDING_URL);
 
@@ -296,9 +327,11 @@ void setup() {
   // Turbidity is digital input
   pinMode(TURBIDITY_PIN, INPUT);
 
-  // Start temperature sensor
+  // Start temperature sensor with non-blocking conversion
   tempSensor.begin();
-  Serial.println("DS18B20 ready on GPIO 4");
+  tempSensor.setWaitForConversion(false); // Non-blocking: eliminates 750ms delay!
+  tempSensor.requestTemperatures();       // Request first conversion
+  Serial.println("DS18B20 ready on GPIO 4 (Async Mode)");
 
   // Connect to WiFi
   Serial.print("Connecting to WiFi: ");
@@ -379,8 +412,7 @@ void loop() {
     lastSensorTime = now;
     Serial.println("================================");
 
-    // Temperature
-    tempSensor.requestTemperatures();
+    // Temperature (Instant non-blocking read)
     float tempC = tempSensor.getTempCByIndex(0);
     if (tempC == DEVICE_DISCONNECTED_C) {
       Serial.println("TEMP: sensor disconnected");
@@ -388,9 +420,6 @@ void loop() {
       Serial.print("TEMP: ");
       Serial.print(tempC);
       Serial.println(" C");
-      if (WiFi.status() == WL_CONNECTED) {
-        postReading("temperature", tempC, "C");
-      }
     }
 
     // pH Calibration
@@ -413,9 +442,6 @@ void loop() {
     } else {
       Serial.println(" (ALKALINE)");
     }
-    if (WiFi.status() == WL_CONNECTED) {
-      postReading("ph", phVal, "pH");
-    }
 
     // Turbidity — analog on GPIO 33
     int   turbRaw = readADCAvg(TURBIDITY_PIN);
@@ -434,9 +460,6 @@ void loop() {
     } else {
       Serial.println("  [TURBID]");
     }
-    if (WiFi.status() == WL_CONNECTED) {
-      postReading("turbidity", turbNTU, "NTU");
-    }
 
     // Rain
     int rainRaw   = readADCAvg(RAIN_PIN);
@@ -452,9 +475,14 @@ void loop() {
     } else {
       Serial.println("% (HEAVY RAIN)");
     }
+
+    // POST ALL 4 SENSORS IN 1 SINGLE FAST BATCH CALL (< 60ms)
     if (WiFi.status() == WL_CONNECTED) {
-      postReading("rain", wetness, "%");
+      postBatchReadings(tempC, phVal, turbNTU, wetness);
     }
+
+    // Trigger next temperature reading asynchronously for next cycle
+    tempSensor.requestTemperatures();
 
     // Always print actuator status after sensor readings
     printMotorStatus();

@@ -1,4 +1,4 @@
 config.bat
 node_modules
 
-docs
+*.docs

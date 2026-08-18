@@ -32,15 +32,49 @@ router.get('/', async (req, res) => {
     settings = await SystemSettings.findOne().sort({ updatedAt: -1 });
   }
   if (!settings) {
-    return res.json({ tempMin: 20, tempMax: 28, phMin: 6.5, phMax: 8.5, smsAlerts: false, emailAlerts: false });
+    return res.json({
+      tempMin: 20,
+      tempMax: 28,
+      phMin: 6.5,
+      phMax: 8.5,
+      turbidityMax: 60,
+      rainThreshold: 40,
+      autoOxygenOnRain: true,
+      smsAlerts: false,
+      emailAlerts: false,
+    });
   }
-  const { gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, smsAlerts, emailAlerts } = settings;
-  res.json({ gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, smsAlerts, emailAlerts });
+  const { gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, turbidityMax, rainThreshold, autoOxygenOnRain, smsAlerts, emailAlerts } = settings;
+  res.json({
+    gatewayIp,
+    mqttPort,
+    tempMin,
+    tempMax,
+    phMin,
+    phMax,
+    turbidityMax: turbidityMax ?? 60,
+    rainThreshold: rainThreshold ?? 40,
+    autoOxygenOnRain: autoOxygenOnRain ?? true,
+    smsAlerts,
+    emailAlerts,
+  });
 });
 
 // PUT /api/settings — save system settings
 router.put('/', async (req, res) => {
-  const allowed = ['gatewayIp', 'mqttPort', 'tempMin', 'tempMax', 'phMin', 'phMax', 'smsAlerts', 'emailAlerts'];
+  const allowed = [
+    'gatewayIp',
+    'mqttPort',
+    'tempMin',
+    'tempMax',
+    'phMin',
+    'phMax',
+    'turbidityMax',
+    'rainThreshold',
+    'autoOxygenOnRain',
+    'smsAlerts',
+    'emailAlerts',
+  ];
   const update = {};
 
   allowed.forEach((key) => {
@@ -61,8 +95,20 @@ router.put('/', async (req, res) => {
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
 
-  const { gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, smsAlerts, emailAlerts } = settings;
-  res.json({ gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, smsAlerts, emailAlerts });
+  const { gatewayIp, mqttPort, tempMin, tempMax, phMin, phMax, turbidityMax, rainThreshold, autoOxygenOnRain, smsAlerts, emailAlerts } = settings;
+  res.json({
+    gatewayIp,
+    mqttPort,
+    tempMin,
+    tempMax,
+    phMin,
+    phMax,
+    turbidityMax: turbidityMax ?? 60,
+    rainThreshold: rainThreshold ?? 40,
+    autoOxygenOnRain: autoOxygenOnRain ?? true,
+    smsAlerts,
+    emailAlerts,
+  });
 });
 
 module.exports = router;

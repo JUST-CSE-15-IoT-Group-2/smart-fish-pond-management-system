@@ -21,6 +21,9 @@ const systemSettingsSchema = new mongoose.Schema(
     tempMax: { type: Number, default: 28 },
     phMin: { type: Number, default: 6.5 },
     phMax: { type: Number, default: 8.5 },
+    turbidityMax: { type: Number, default: 60 }, // Turbidity NTU threshold (triggers alarm if >=)
+    rainThreshold: { type: Number, default: 40 }, // Rain % threshold (triggers oxygen pump if >=)
+    autoOxygenOnRain: { type: Boolean, default: true }, // Auto-activate oxygen dissolving motor on rain
     // Notification preferences
     smsAlerts: { type: Boolean, default: true },
     emailAlerts: { type: Boolean, default: false },
