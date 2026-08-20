@@ -1,154 +1,173 @@
 # Smart Fish Pond Management System
 
-## Tech Stack
 
-**Frontend**
-- Next.js 16
-- Tailwind CSS
-- Socket.IO Client (real-time updates)
-
-**Backend**
-- Node.js + Express
-- MongoDB + Mongoose
-- Passport.js (Google OAuth 2.0) + JWT sessions
-- Socket.IO
-
-**Microcontroller**
-- ESP32 Development Board (Wi-Fi, 2.4GHz only)
-
-**Sensors**
-- DS18B20 — water temperature
-- Analog pH sensor
-- Analog turbidity sensor
-- Analog raindrop sensor
-
-**Actuators**
-- Relay-controlled oxygen pump (aeration)
-- Relay-controlled feeder motor
-- Servo-driven feeder gate
-
-## Repository Layout
-
-```
-backend/    Express API, MongoDB models, Socket.IO server
-frontend/   Next.js dashboard
-esp32/      ESP32 firmware (esp_code.ino) + engineering guide
-docs/       User manual and screenshots
-```
-
-## Prerequisites
-
-- A computer/server to run the backend that stays on permanently, ideally with a public IP/domain so the dashboard is reachable over the internet.
-- An ESP32 with the sensors and actuators wired up.
-- A Wi-Fi router reachable by both the server and the ESP32 — **the ESP32 only supports 2.4GHz Wi-Fi, not 5GHz.**
-- Node.js and MongoDB installed on the server.
-
-![Hardware setup](docs/assets/hardware-setup.jpg)
+The frontend is built with **Next.js**, the backend with **Node.js/Express**, and the microcontroller firmware is written in **C++** (Arduino/ESP32).
 
 ## How to Run
 
-### 1. Backend
+***Note:** Below instruction is for running the system locally on your computer. To actually implement the system and accessing it from the internet, you will need to host your frontend, backend and database in public servers.*
 
-```bash
-cd backend
-cp .env.example .env   # fill in your own values
-npm install
-npm run dev
-```
+### Part 1: Prerequisites
 
-Key variables in `backend/.env`:
+Make sure you have:
 
-| Variable | Purpose |
+- A computer to run the backend and frontend.
+- An **ESP32** microcontroller with the sensors and actuators already wired up.
+- The table below shows which ESP32 pin connects to each component's data pin.
+
+| Component | ESP32 Pin |
 |---|---|
-| `PORT` | Port the API listens on |
-| `MONGODB_URI` | MongoDB connection string |
-| `JWT_SECRET`, `JWT_EXPIRES_IN` | Session token signing |
-| `AUTH_USER_ID`, `AUTH_PASSWORD`, `AUTH_USER_NAME` | Default login credentials, synced to MongoDB on startup |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` | Google OAuth 2.0 login |
-| `FRONTEND_URL` | Frontend origin, used for CORS and post-login redirect |
+| Feeder motor's Relay Module's data pin | `23` |
+| Oxygen motor's Relay Module's data pin | `22` |
+| Servo motor data pin | `21` |
+| Temperature sensor data pin | `4` |
+| pH sensor data pin | `34` |
+| Turbidity sensor data pin | `33` |
+| Rain sensor data pin | `32` |
 
-Keep this process running at all times — if it stops, the dashboard loses its live connection and the ESP32 can't send readings or receive commands. Deploy it somewhere reachable from the internet and note its address; the ESP32 and the frontend both need it.
+- A Wi-Fi router that both the computer and the ESP32 can connect to (the ESP32 only supports **2.4GHz** Wi-Fi, not 5GHz).
+- Note: The ESP32 and computer needs to be connected to same WiFI when running the system locally. But if you hosted your backend on a public server, so that it can be accessed from the internet, then only the ESP32 needs to be connected to a WiFi.
+- Clone the repository from https://github.com/JUST-CSE-15-IoT-Group-2/smart-fish-pond-management-system, or download and extract the project zip file, and remember the location.
 
-### 2. ESP32 Firmware
+![Hardware Setup](docs/assets/hardware-setup.jpg)
 
-1. Open `esp32/esp_code/esp_code.ino` in the Arduino IDE.
-2. Edit `WIFI_SSID` / `WIFI_PASSWORD` for your network.
-3. Edit `BACKEND_IP` / `BACKEND_PORT` to point at the backend server from step 1.
-4. Upload to the ESP32 over USB.
-5. Open the Serial Monitor to confirm it joins Wi-Fi and starts printing sensor readings.
+*Figure 1: Hardware Setup.*
 
-Pin reference (from the firmware):
+### Part 2: Setting Up the Backend
 
-| Function | Pin |
+The backend is the program that stores your pond's data and talks to both the ESP32 and your dashboard.
+
+- Install **Node.js** and **MongoDB** on the computer.
+- From the project folder, open the `backend` folder and create a `.env` file with necessary values. The format is explained in `.env.example` file in `backend` folder.
+- Open a terminal in `backend` folder and type `npm install`. This will install all required packages.
+- Start the backend by entering `npm run dev` command in the same terminal. Once running, it will print a message showing it is live and reachable on your network. It will also show which port the backend is running on (e.g. **Port: 5000**). Note that.
+- Also note the computer's local network IP address (find it with `ipconfig` on Windows or `ifconfig`/`ip addr` on Mac/Linux); the ESP32 and frontend will use this address with the backend's port number to reach the backend.
+- Note: The above instruction is for running the system locally. If you want to access the system from internet, host the backend on a public server with a public IP address or domain instead, and use that IP address and port number or domain in frontend and ESP32.
+
+![Backend Setup](docs/assets/backend-setup.png)
+
+*Figure 2: Backend Setup.*
+
+Keep this computer and the backend program running at all times. If it stops, your dashboard will lose its live connection and the ESP32 will not be able to send readings or receive commands.
+
+### Part 3: Setting Up the ESP32
+
+The ESP32 is the microcontroller that is physically connected to your sensors and actuators.
+
+- Install and open **Arduino IDE**. You will need to go to **Sketch → Include Library → Manage Libraries** and install the following libraries.
+
+| Library Name | Manufacturer |
 |---|---|
-| Feeder relay | GPIO 23 |
-| Oxygen pump relay | GPIO 22 |
-| DS18B20 temperature | GPIO 4 |
-| pH sensor (analog) | GPIO 34 |
-| Turbidity sensor (analog) | GPIO 33 |
-| Raindrop sensor (analog) | GPIO 32 |
-| Feeder gate servo | GPIO 21 |
+| Arduinojson | Benoit Blanchon |
+| DallasTemperature | Miles Burton |
+| ESP32Servo | Kevin Harrington, John K. Bennet |
+| OneWire | Jim Studt, Tom Pollard and others |
 
-If the ESP32 can't find your Wi-Fi, double-check the SSID is typed exactly and that the router is broadcasting 2.4GHz.
+- Go to **Tools → Board → Boards Manager** and install **esp32** by Espressif Systems.
+- In Arduino IDE, go to **Files → Open**, then a file manager window will appear. In that window go to the project folder. Then from the project folder go to `esp32/esp_code` folder and open `esp_code.ino` file.
+- Then go to **Tools → Board → esp32** and choose **ESP32 Dev Module**.
+- In the code, edit the value of `WIFI_SSID` global variable as your WiFi name, and `WIFI_PASSWORD` as your WiFi password.
+- Similarly edit the value of `BACKEND_IP` as your backend IP address, and the value of `BACKEND_PORT` as your backend port number (the backend IP address and port number you noted in Part 2).
+- Note: If you hosted your backend in a public server, use your public IP address and port number or domain.
+- Upload the code to the ESP32 using a USB cable.
+- Once the starting process completes and it shows in the terminal **"Hard resetting via RTS pin..."**, go to **Tools → Serial Monitor** in the Arduino IDE, then a section will appear in the bottom. That is the serial monitor. In the serial monitor there should be baud rate drop down menu. From the baud rate drop down menu, choose **115200**. Now, you should see it join your Wi-Fi network and begin printing sensor readings every few seconds.
 
-### 3. Frontend
+![ESP32 Setup](docs/assets/esp32-setup.png)
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+*Figure 3: ESP 32 Setup.*
 
-Create `frontend/.env.local` with:
+If the ESP32 cannot find your Wi-Fi, double check the network name is typed exactly right and that your router is broadcasting on the 2.4GHz band.
 
-`frontend/.env.local`:
+### Part 4: Setting Up the Frontend Dashboard
 
-| Variable | Purpose |
-|---|---|
-| `NEXT_PUBLIC_API_URL` | URL of the backend from step 1 |
+- From the project folder, open the `frontend` folder.
+- In that folder, create a `.env.local` file with your own values. The format in explained in `.env.local.example` file in `frontend` folder.
+- Open a terminal in the `frontend` folder.
+- Enter command `npm install` in the terminal.
+- Enter command `npm run dev` in the same terminal. This runs the frontend on your computer. You will see the site address in the terminal once the frontend runs (e.g. `http://localhost:3000`). Open that in your browser and you will see the landing page.
+- From the landing page, log in using the id password that you set on your backend `.env` file.
+- Note: If you want to access the frontend from the internet, you will need to host the frontend on a public server.
 
-Log in with the credentials set in `backend/.env` (`AUTH_USER_ID` / `AUTH_PASSWORD`), or via Google if OAuth is configured.
+![Frontend Setup](docs/assets/frontend-setup.png)
 
-![Landing page](docs/assets/landing-page.png)
+*Figure 4: Frontend Setup.*
+
+![Landing Page](docs/assets/landing-page.png)
+
+*Figure 5: Landing Page.*
+
+Once logged in, you will land on your dashboard, ready to monitor and control your pond.
 
 ## How to Use
 
-The dashboard has four sections in the side menu: **Updates**, **Controls**, **Settings**, **Account**.
+### Part 5: Understanding the Dashboard
 
-### Updates
+The dashboard has four main sections, reachable from the side menu.
 
-Live view of the pond — water temperature, pH, turbidity, and rainfall, updating in real time over Socket.IO, plus trend charts. A reading outside its safe range changes the card's color and can trigger a push notification.
+#### Updates
 
-![Updates page](docs/assets/updates-page.png)
-![Updates page — trend charts](docs/assets/updates-page-2.png)
+This is your live view of the pond. You will see four cards showing water temperature, pH level, turbidity (clarity), and rainfall, all updating automatically as new readings arrive. Below the cards are trend charts so you can see how conditions have changed over recent readings. If a reading moves outside a safe range, the card will change color and you may also get a push notification on your device.
 
-### Controls
+![Updates menu from Dashboard](docs/assets/updates-page.png)
 
-Manage the feeder and oxygen pump.
+*Figure 6: Updates menu from Dashboard.*
 
-- **Feeding schedule** — add/remove times of day the feeder runs automatically, and set the run duration per feeding.
-- **Manual mode** — take direct control of the feeder with on/off buttons instead of the schedule.
-- **Oxygen pump** — toggle on/off and set speed via slider or presets. It also auto-starts when the rain sensor crosses the threshold configured in Settings, and stops when it drops back below.
-- **Link controller** — kill the connection to force an immediate fail-safe shutdown of all actuators; reconnect to resume.
+![Updates menu from Dashboard - 2](docs/assets/updates-page-2.png)
 
-![Controls page](docs/assets/controls-page.png)
-![Feeding schedule](docs/assets/feeding-schedule.png)
+*Figure 7: Updates menu from Dashboard - 2.*
 
-### Settings
+#### Controls
 
-Configure alarm thresholds (min/max temperature, pH range, max turbidity, rain alarm limit), the rain trigger threshold that drives automatic oxygen pump activation, and push notifications for out-of-range alerts.
+This is where you manage your feeder and oxygen motor.
 
-![Settings page](docs/assets/settings-page.png)
+- **Feeding schedule:** add or remove times of day when the feeder should run automatically, and set how many minutes it runs each time.
+- **Manual mode:** turn on manual mode to take direct control of the feeder, then use the on and off button to feed your fish whenever you like, instead of waiting for the schedule.
+- **Oxygen motor:** turn the motor on or off. The motor will automatically turn on if rain meter detects more 40% rain and vice versa. User can adjust this from **Settings**.
+- **Connection link:** if you ever need to stop all automatic actions immediately, you can sever the connection here. This safely shuts everything down until you reconnect it.
 
-### Account
+![Controls menu from Dashboard](docs/assets/controls-page.png)
 
-Profile info and the API key (`X-API-Key`) used by IoT devices to authenticate `POST` requests to the sensor-reading endpoint.
+*Figure 8: Controls menu from Dashboard.*
 
-![Account page](docs/assets/account-page.png)
+![Feeding motor schedule control](docs/assets/feeding-schedule.png)
 
-## Troubleshooting
+*Figure 9: Feeding motor schedule control.*
 
-- **No new readings** — confirm the server/backend is running and the ESP32 is powered and connected to Wi-Fi.
-- **Feeder or pump not responding** — check the connection link on the Controls page isn't killed; reconnect if it is.
-- **Not receiving notifications** — allow notifications for the dashboard in your browser/phone settings and enable alerts on the Settings page.
-- **ESP32 won't connect to Wi-Fi** — verify the SSID/password in the firmware and that the router is on 2.4GHz (the ESP32 cannot use 5GHz).
+#### Settings
+
+Here you can set the safe ranges for temperature, rain and pH. If a reading goes above or below these limits, the system will treat it as a warning and can alert you. The Rain sensor threshold will also be used for automatically turning on/off the oxygen motor. You can also turn on push notifications from this page so you get alerts even when the dashboard is closed.
+
+![Settings Configuration](docs/assets/settings-page.png)
+
+*Figure 10: Settings Configuration.*
+
+#### Account
+
+This shows your profile information and a personal access key.
+
+![Account settings](docs/assets/account-page.png)
+
+*Figure 11: Account settings.*
+
+### Part 6: Everyday Use
+
+Once everything is set up, using the system day to day is simple.
+
+- Check the **Updates** page whenever you want a quick look at your pond's condition.
+- Let the feeding schedule run on its own, or switch to manual mode.
+- Keep the oxygen motor running automatically based on rain, or you can switch it on/off manually.
+- If you get a push notification about a warning, open the app and check the **Updates** page to see what triggered it.
+
+### Part 7: Simple Troubleshooting
+
+**No new readings showing up:** Check that your server computer is turned on and the backend is running. Also check that the ESP32 is powered and connected to Wi-Fi.
+
+**Feeder or oxygen motor not responding:** Make sure the connection link on the **Controls** page is not switched off. If it is, reconnect it.
+
+**Not receiving notifications:** Make sure notifications are allowed for the dashboard in your phone or browser settings, and that you enabled alerts from the **Settings** page.
+
+**ESP32 will not connect to Wi-Fi:** Confirm the Wi-Fi name and password in the firmware are correct, and that your router is on the 2.4GHz band, since the ESP32 cannot connect to 5GHz networks.
+
+## Conclusion
+
+The project successfully built a working system that lets fish farmers monitor and control their pond remotely. It reads key water conditions, shows them live on a dashboard, and gives direct control over feeding and aeration, both scheduled and manual. Push notifications close the loop between detecting a problem and the user knowing about it. The biggest missing pieces are offline alerting and local schedule storage on the ESP32, and these should be the next priorities. Overall, the system proves that an affordable, locally deployable pond monitoring solution is achievable, and with the identified improvements, it has a clear path toward becoming a dependable tool for small and mid sized fish farms.
